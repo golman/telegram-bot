@@ -58,8 +58,8 @@ func main() {
 			}
 		} else {
 			msg := tgbotapi.NewMessage(channelID, update.Message.Text)
-			msg.Text = msg.Text + "\n" + "by: " +
-				"by: [" + update.Message.From.FirstName + " " + update.Message.From.LastName +
+			msg.Text = msg.Text + "\n\n" +
+				"[by: " + update.Message.From.FirstName + " " + update.Message.From.LastName +
 				"](tg://user?id=" + strconv.FormatInt(update.Message.From.ID, 10) + ")"
 			msg.ParseMode = tgbotapi.ModeMarkdownV2
 			sendMessage(bot, msg)
@@ -84,8 +84,8 @@ func sendPhotoMessage(bot *tgbotapi.BotAPI, channelID int64, update tgbotapi.Upd
 	}
 
 	// Изменение подписи
-	caption := update.Message.Caption + "\n" +
-		"by: [" + update.Message.From.FirstName + " " + update.Message.From.LastName +
+	caption := update.Message.Caption + "\n\n" +
+		"[by: " + update.Message.From.FirstName + " " + update.Message.From.LastName +
 		"](tg://user?id=" + strconv.FormatInt(update.Message.From.ID, 10) + ")"
 
 	// Создание сообщения с фотографией и измененной подписью
