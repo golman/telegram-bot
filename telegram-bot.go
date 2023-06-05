@@ -110,9 +110,9 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 		}
 	} else {
 		msg := tgbotapi.NewMessage(vbbot.channelId, update.Message.Text)
-		msg.Text = msg.Text + "\n\n" +
-			"[by: " + update.Message.From.FirstName + " " + update.Message.From.LastName +
-			"](tg://user?id=" + strconv.FormatInt(update.Message.From.ID, 10) + ")"
+		msg.Text = createCaption(msg.Text,
+			update.Message.From.FirstName+" "+update.Message.From.LastName,
+			update.Message.From.ID)
 		msg.ParseMode = tgbotapi.ModeMarkdownV2
 		vbbot.sendMessageToMainChannel(msg)
 	}
@@ -141,9 +141,7 @@ func (vbbot *VBBot) sendMediaGroupMessageToMainChannel(config tgbotapi.MediaGrou
 func (vbbot *VBBot) sendAllPhotos(mm *MediaMessage) {
 
 	// Изменение подписи
-	caption := mm.caption + "\n\n" +
-		"[by: " + mm.fullname +
-		"](tg://user?id=" + strconv.FormatInt(mm.userid, 10) + ")"
+	caption := mm.createCaption()
 	mgc := tgbotapi.MediaGroupConfig{
 		ChatID: vbbot.channelId,
 		Media:  make([]interface{}, 0),
@@ -173,9 +171,9 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	}
 
 	// Изменение подписи
-	caption := update.Message.Caption + "\n\n" +
-		"[by: " + update.Message.From.FirstName + " " + update.Message.From.LastName +
-		"](tg://user?id=" + strconv.FormatInt(update.Message.From.ID, 10) + ")"
+	caption := createCaption(update.Message.Caption,
+		update.Message.From.FirstName+" "+update.Message.From.LastName,
+		update.Message.From.ID)
 
 	// Создание сообщения с фотографией и измененной подписью
 	msg := tgbotapi.NewPhoto(vbbot.channelId, tgbotapi.FileID(fileConfig.FileID))
@@ -184,4 +182,14 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 
 	// Отправка сообщения с фотографией и подписью
 	vbbot.sendMessageToMainChannel(msg)
+}
+
+func (mm *MediaMessage) createCaption() string {
+	return createCaption(mm.caption, mm.fullname, mm.userid)
+}
+
+func createCaption(caption string, fullname string, userid int64) string {
+	return caption + "\n\n" +
+		"[by: " + fullname +
+		"](tg://user?id=" + strconv.FormatInt(userid, 10) + ")"
 }
