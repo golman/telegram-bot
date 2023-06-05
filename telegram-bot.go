@@ -33,6 +33,10 @@ const (
 	MessageStateToDelete
 )
 
+const (
+	MediaGroupDelayMessage = "Сообщение будет отправлено в чат через 10 секунд"
+)
+
 func main() {
 	botToken := os.Getenv("BOT_TOKEN")
 	channelIDStr := os.Getenv("CHANNEL_ID")
@@ -76,7 +80,7 @@ func (vbbot *VBBot) Start(ch tgbotapi.UpdatesChannel) {
 				if v.state == MessageStateInit {
 					v.state = MessageStateToBeSent
 				} else if v.state == MessageStateToBeSent {
-					vbbot.sendAllPhotos(v)
+					vbbot.sendMediaGroup(v)
 					v.state = MessageStateToDelete
 				} else if v.state == MessageStateToDelete {
 					delete(vbbot.mediamsg, k)
@@ -97,7 +101,7 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 					userid:   update.Message.From.ID,
 					state:    MessageStateInit,
 				}
-				vbbot.sendBotMessage("Сообщение будет отправлено в чат через 10 секунд", update.Message.Chat.ID)
+				vbbot.sendTextMessage(MediaGroupDelayMessage, update.Message.Chat.ID)
 			}
 			vbbot.mediamsg[update.Message.MediaGroupID].fileid =
 				append(vbbot.mediamsg[update.Message.MediaGroupID].fileid,
@@ -114,32 +118,31 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 			update.Message.From.FirstName+" "+update.Message.From.LastName,
 			update.Message.From.ID)
 		msg.ParseMode = tgbotapi.ModeMarkdownV2
-		vbbot.sendMessageToMainChannel(msg)
+		vbbot.sendMessage(msg)
 	}
 }
 
-func (vbbot *VBBot) sendBotMessage(txtMsg string, chatId int64) {
+func (vbbot *VBBot) sendTextMessage(txtMsg string, chatId int64) {
 	escaped := tgbotapi.EscapeText(tgbotapi.ModeMarkdownV2, txtMsg)
 	botMsg := tgbotapi.NewMessage(chatId, escaped)
-	vbbot.sendMessageToMainChannel(botMsg)
+	vbbot.sendMessage(botMsg)
 }
 
-func (vbbot *VBBot) sendMessageToMainChannel(msg tgbotapi.Chattable) {
+func (vbbot *VBBot) sendMessage(msg tgbotapi.Chattable) {
 	_, err := vbbot.tgbot.Send(msg)
 	if err != nil {
 		log.Println(err)
 	}
 }
 
-func (vbbot *VBBot) sendMediaGroupMessageToMainChannel(config tgbotapi.MediaGroupConfig) {
+func (vbbot *VBBot) sendMediaGroupMessage(config tgbotapi.MediaGroupConfig) {
 	_, err := vbbot.tgbot.SendMediaGroup(config)
 	if err != nil {
 		log.Println(err)
 	}
 }
 
-func (vbbot *VBBot) sendAllPhotos(mm *MediaMessage) {
-
+func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 	// Изменение подписи
 	caption := mm.createCaption()
 	mgc := tgbotapi.MediaGroupConfig{
@@ -157,7 +160,7 @@ func (vbbot *VBBot) sendAllPhotos(mm *MediaMessage) {
 		mgc.Media = append(mgc.Media, imp)
 	}
 
-	vbbot.sendMediaGroupMessageToMainChannel(mgc)
+	vbbot.sendMediaGroupMessage(mgc)
 
 }
 
@@ -181,7 +184,7 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	msg.ParseMode = tgbotapi.ModeMarkdownV2
 
 	// Отправка сообщения с фотографией и подписью
-	vbbot.sendMessageToMainChannel(msg)
+	vbbot.sendMessage(msg)
 }
 
 func (mm *MediaMessage) createCaption() string {
