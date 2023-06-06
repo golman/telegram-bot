@@ -16,10 +16,6 @@ type VBBot struct {
 	ticker    *time.Ticker
 }
 
-const (
-	MediaGroupDelayMessage = "Сообщение будет отправлено в чат через 10 секунд"
-)
-
 func main() {
 	botToken := os.Getenv("BOT_TOKEN")
 	channelIDStr := os.Getenv("CHANNEL_ID")
@@ -75,7 +71,11 @@ func (vbbot *VBBot) Start(ch tgbotapi.UpdatesChannel) {
 
 func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 	if !vbbot.authByChannel(update) {
-		vbbot.sendTextMessage("Вы не подписаны на канал", update.Message.Chat.ID)
+		vbbot.sendTextMessage(NotSubscribedMessage, update.Message.Chat.ID)
+		return
+	}
+	if vbbot.runFilter(update) {
+		vbbot.sendTextMessage(FiltersFailedMessage, update.Message.Chat.ID)
 		return
 	}
 	if update.Message.Photo != nil {
@@ -100,12 +100,7 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 			vbbot.sendPhotoMessage(update)
 		}
 	} else {
-		msg := tgbotapi.NewMessage(vbbot.channelId, update.Message.Text)
-		msg.Text = createCaption(msg.Text,
-			update.Message.From.FirstName+" "+update.Message.From.LastName,
-			update.Message.From.ID)
-		msg.ParseMode = tgbotapi.ModeMarkdownV2
-		vbbot.sendMessage(msg)
+		vbbot.sendPlainMessage(update)
 	}
 }
 

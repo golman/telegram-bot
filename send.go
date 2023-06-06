@@ -26,6 +26,10 @@ func (vbbot *VBBot) sendMediaGroupMessage(config tgbotapi.MediaGroupConfig) {
 }
 
 func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
+	if mm.caption == "" {
+		vbbot.sayNoEmptyMessage(mm.userid)
+		return
+	}
 	// Изменение подписи
 	caption := mm.createCaption()
 	mgc := tgbotapi.MediaGroupConfig{
@@ -48,6 +52,11 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 }
 
 func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
+	if update.Message.Caption == "" {
+		vbbot.sayNoEmptyMessage(update.Message.Chat.ID)
+		return
+	}
+
 	// Получение фотографии с наибольшим размером
 	photo := (update.Message.Photo)[len(update.Message.Photo)-1]
 
@@ -55,7 +64,6 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	fileConfig := tgbotapi.FileConfig{
 		FileID: photo.FileID,
 	}
-
 	// Изменение подписи
 	caption := createCaption(update.Message.Caption,
 		update.Message.From.FirstName+" "+update.Message.From.LastName,
@@ -67,5 +75,18 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	msg.ParseMode = tgbotapi.ModeMarkdownV2
 
 	// Отправка сообщения с фотографией и подписью
+	vbbot.sendMessage(msg)
+}
+
+func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
+	if update.Message.Text == "" {
+		vbbot.sayNoEmptyMessage(update.Message.Chat.ID)
+		return
+	}
+	msg := tgbotapi.NewMessage(vbbot.channelId, update.Message.Text)
+	msg.Text = createCaption(msg.Text,
+		update.Message.From.FirstName+" "+update.Message.From.LastName,
+		update.Message.From.ID)
+	msg.ParseMode = tgbotapi.ModeMarkdownV2
 	vbbot.sendMessage(msg)
 }
