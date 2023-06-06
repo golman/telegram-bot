@@ -192,7 +192,7 @@ func (mm *MediaMessage) createCaption() string {
 }
 
 func createCaption(caption string, fullname string, userid int64) string {
-	return caption + "\n\n" +
+	return "```\n\n" + caption + "\n\n```" + "\n\n" +
 		"[by: " + fullname +
 		"](tg://user?id=" + strconv.FormatInt(userid, 10) + ")"
 }
