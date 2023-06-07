@@ -6,6 +6,9 @@ import (
 )
 
 func (vbbot *VBBot) authByChannel(update tgbotapi.Update) bool {
+	if !vbbot.cfg.authEnabled {
+		return true
+	}
 	cmc := tgbotapi.GetChatMemberConfig{}
 	cmc.UserID = update.Message.From.ID
 	cmc.ChatID = vbbot.channelId
@@ -16,5 +19,5 @@ func (vbbot *VBBot) authByChannel(update tgbotapi.Update) bool {
 		return false
 	}
 	log.Println(cm)
-	return cm.IsMember || cm.IsCreator() || cm.IsAdministrator()
+	return !cm.WasKicked() && !cm.HasLeft()
 }
