@@ -14,11 +14,17 @@ type VBBot struct {
 	channelId int64
 	mediamsg  map[string]*MediaMessage
 	ticker    *time.Ticker
+	cfg       VBBotCfg
+}
+
+type VBBotCfg struct {
+	authEnabled bool
 }
 
 func main() {
 	botToken := os.Getenv("BOT_TOKEN")
 	channelIDStr := os.Getenv("CHANNEL_ID")
+	authEnabledStr := os.Getenv("BOT_AUTH_ENABLED")
 	channelID, err := strconv.ParseInt(channelIDStr, 10, 64)
 	if err != nil {
 		log.Fatal(err)
@@ -41,6 +47,9 @@ func main() {
 		channelId: channelID,
 		mediamsg:  map[string]*MediaMessage{},
 		ticker:    time.NewTicker(5 * time.Second),
+		cfg: VBBotCfg{
+			authEnabled: authEnabledStr == "true",
+		},
 	}
 	b.Start(updates)
 }
