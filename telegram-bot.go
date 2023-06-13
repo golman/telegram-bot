@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -114,7 +115,12 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 }
 
 func createCaption(caption string, fullname string, userid int64) string {
-	return "```\n\n" + caption + "\n\n```" + "\n\n" +
+	if strings.HasPrefix(caption, "!noescape!") {
+		caption = caption[10:]
+	} else {
+		caption = tgbotapi.EscapeText(tgbotapi.ModeMarkdownV2, caption)
+	}
+	return caption + "\n\n" +
 		"[by: " + fullname +
 		"](tg://user?id=" + strconv.FormatInt(userid, 10) + ")"
 }

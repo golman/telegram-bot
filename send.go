@@ -1,28 +1,14 @@
 package main
 
 import (
+	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
 )
 
-func (vbbot *VBBot) sendTextMessage(txtMsg string, chatId int64) {
-	escaped := tgbotapi.EscapeText(tgbotapi.ModeMarkdownV2, txtMsg)
-	botMsg := tgbotapi.NewMessage(chatId, escaped)
-	vbbot.sendMessage(botMsg)
-}
-
-func (vbbot *VBBot) sendMessage(msg tgbotapi.Chattable) {
-	_, err := vbbot.tgbot.Send(msg)
-	if err != nil {
-		log.Println(err)
-	}
-}
-
-func (vbbot *VBBot) sendMediaGroupMessage(config tgbotapi.MediaGroupConfig) {
+func (vbbot *VBBot) sendMediaGroupMessage(config tgbotapi.MediaGroupConfig) error {
 	_, err := vbbot.tgbot.SendMediaGroup(config)
-	if err != nil {
-		log.Println(err)
-	}
+	return err
 }
 
 func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
@@ -47,7 +33,10 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 		mgc.Media = append(mgc.Media, imp)
 	}
 
-	vbbot.sendMediaGroupMessage(mgc)
+	err := vbbot.sendMediaGroupMessage(mgc)
+	if err != nil {
+		vbbot.handleError(err, mm.userid)
+	}
 
 }
 
@@ -75,7 +64,10 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	msg.ParseMode = tgbotapi.ModeMarkdownV2
 
 	// Отправка сообщения с фотографией и подписью
-	vbbot.sendMessage(msg)
+	err := vbbot.sendMessage(msg)
+	if err != nil {
+		vbbot.handleError(err, update.Message.Chat.ID)
+	}
 }
 
 func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
@@ -88,5 +80,33 @@ func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
 		update.Message.From.FirstName+" "+update.Message.From.LastName,
 		update.Message.From.ID)
 	msg.ParseMode = tgbotapi.ModeMarkdownV2
-	vbbot.sendMessage(msg)
+	err := vbbot.sendMessage(msg)
+	if err != nil {
+		vbbot.handleError(err, update.Message.Chat.ID)
+	}
+}
+
+func (vbbot *VBBot) sendTextMessage(txtMsg string, chatId int64) {
+	escaped := tgbotapi.EscapeText(tgbotapi.ModeMarkdownV2, txtMsg)
+	botMsg := tgbotapi.NewMessage(chatId, escaped)
+	err := vbbot.sendMessage(botMsg)
+	if err != nil {
+		vbbot.handleError(err, chatId)
+	}
+}
+
+func (vbbot *VBBot) sendMessage(msg tgbotapi.Chattable) error {
+	_, err := vbbot.tgbot.Send(msg)
+	return err
+}
+
+func (vbbot *VBBot) handleError(msgErr error, chatId int64) {
+	log.Println(msgErr)
+	errmsg := fmt.Sprintf("Не удалось отправить сообщение. %s", msgErr.Error())
+	escaped := tgbotapi.EscapeText(tgbotapi.ModeMarkdownV2, errmsg)
+	botMsg := tgbotapi.NewMessage(chatId, escaped)
+	_, err := vbbot.tgbot.Send(botMsg)
+	if err != nil {
+		log.Println(err)
+	}
 }
