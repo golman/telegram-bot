@@ -121,6 +121,5 @@ func createCaption(caption string, fullname string, userid int64) string {
 		caption = tgbotapi.EscapeText(tgbotapi.ModeMarkdownV2, caption)
 	}
 	return caption + "\n\n" +
-		"[by: " + fullname +
-		"](tg://user?id=" + strconv.FormatInt(userid, 10) + ")"
+		"by: [" + fullname + "](tg://user?id=" + strconv.FormatInt(userid, 10) + ")"
 }
