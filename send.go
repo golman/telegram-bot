@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
+	"strconv"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 func (vbbot *VBBot) sendMediaGroupMessage(config tgbotapi.MediaGroupConfig) error {
@@ -33,9 +35,11 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 		mgc.Media = append(mgc.Media, imp)
 	}
 
-	err := vbbot.sendMediaGroupMessage(mgc)
+	sentMsg, err := vbbot.tgbot.SendMediaGroup(mgc)
 	if err != nil {
 		vbbot.handleError(err, mm.userid)
+	} else {
+		vbbot.confirmNewInzerat(mm.userid, mm.originalmessageid, sentMsg[0])
 	}
 
 }
@@ -64,9 +68,12 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	msg.ParseMode = tgbotapi.ModeMarkdownV2
 
 	// Отправка сообщения с фотографией и подписью
-	err := vbbot.sendMessage(msg)
+	// err := vbbot.sendMessage(msg)
+	sentMsg, err := vbbot.tgbot.Send(msg)
 	if err != nil {
 		vbbot.handleError(err, update.Message.Chat.ID)
+	} else {
+		vbbot.confirmNewInzerat(update.Message.From.ID, update.Message.MessageID, sentMsg)
 	}
 }
 
@@ -80,9 +87,27 @@ func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
 		update.Message.From.FirstName+" "+update.Message.From.LastName,
 		update.Message.From.ID)
 	msg.ParseMode = tgbotapi.ModeMarkdownV2
-	err := vbbot.sendMessage(msg)
+
+	// Send text message
+	sentMsg, err := vbbot.tgbot.Send(msg)
 	if err != nil {
 		vbbot.handleError(err, update.Message.Chat.ID)
+		return
+	} else {
+		vbbot.confirmNewInzerat(update.Message.From.ID, update.Message.MessageID, sentMsg)
+	}
+}
+
+func (vbbot *VBBot) confirmNewInzerat(chatId int64, replyToId int, sentMsg tgbotapi.Message) {
+	buttonMsg := tgbotapi.NewMessage(chatId, "Объявление опубликовано.\nНажми на кнопку чтобы отметить проданным.")
+	buttonMsg.ReplyToMessageID = replyToId
+	buttonMsg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
+		tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Кнопка!", "delete_"+strconv.Itoa(int(sentMsg.Chat.ID))+"_"+strconv.Itoa(sentMsg.MessageID)),
+		),
+	)
+	if err := vbbot.sendMessage(buttonMsg); err != nil {
+		vbbot.handleError(err, chatId)
 	}
 }
 

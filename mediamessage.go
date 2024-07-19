@@ -1,12 +1,13 @@
 package main
 
 type MediaMessage struct {
-	fileid   []string
-	username string
-	fullname string
-	userid   int64
-	caption  string
-	state    MessageState
+	fileid            []string
+	username          string
+	fullname          string
+	userid            int64
+	originalmessageid int
+	caption           string
+	state             MessageState
 }
 
 type MessageState int

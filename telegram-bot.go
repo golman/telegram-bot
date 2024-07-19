@@ -63,6 +63,8 @@ func (vbbot *VBBot) Start(ch tgbotapi.UpdatesChannel) {
 				if !update.Message.IsCommand() {
 					vbbot.handleUpdate(update)
 				}
+			} else if update.CallbackQuery != nil {
+				vbbot.handleCallbackQuery(update.CallbackQuery)
 			}
 		case <-vbbot.ticker.C:
 			for k, v := range vbbot.mediamsg {
@@ -78,8 +80,60 @@ func (vbbot *VBBot) Start(ch tgbotapi.UpdatesChannel) {
 		}
 	}
 }
+func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
+	parts := strings.Split(query.Data, "_")
+	if len(parts) != 3 || parts[0] != "delete" {
+		return
+	}
+
+	chatID, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		vbbot.handleCallbackError(query, "Invalid chat ID")
+		return
+	}
+
+	messageID, err := strconv.Atoi(parts[2])
+	if err != nil {
+		vbbot.handleCallbackError(query, "Invalid message ID")
+		return
+	}
+
+	var editedMsg tgbotapi.Chattable
+
+	if len(query.Message.ReplyToMessage.Caption) == 0 {
+		editedMsg = tgbotapi.NewEditMessageText(chatID, messageID, "Продано!")
+	} else {
+		editedMsg = tgbotapi.NewEditMessageCaption(chatID, messageID, "Продано!")
+	}
+
+	_, err = vbbot.tgbot.Send(editedMsg)
+	if err != nil {
+		vbbot.handleCallbackError(query, "Ой!")
+		log.Println("Error editing message:", err)
+		return
+	}
+
+	// Optionally, confirm the successful edit to the user
+	callback := tgbotapi.NewCallback(query.ID, "Всё!")
+	vbbot.tgbot.Request(callback)
+
+	editedMsg = tgbotapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, "Продано!")
+	_, err = vbbot.tgbot.Send(editedMsg)
+
+	// deletedMsg := tgbotapi.NewDeleteMessage(query.Message.Chat.ID, query.Message.MessageID)
+	// _, err = vbbot.tgbot.Request(deletedMsg)
+
+}
+
+func (vbbot *VBBot) handleCallbackError(query *tgbotapi.CallbackQuery, message string) {
+	callback := tgbotapi.NewCallback(query.ID, message)
+	vbbot.tgbot.Request(callback)
+}
 
 func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
+	if update.Message.Chat.ID < 0 {
+		return
+	}
 	if !vbbot.authByChannel(update) {
 		vbbot.sendTextMessage(NotSubscribedMessage, update.Message.Chat.ID)
 		return
@@ -92,11 +146,12 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 		if update.Message.MediaGroupID != "" {
 			if _, ok := vbbot.mediamsg[update.Message.MediaGroupID]; !ok {
 				vbbot.mediamsg[update.Message.MediaGroupID] = &MediaMessage{
-					fileid:   []string{},
-					username: update.Message.From.UserName,
-					fullname: update.Message.From.FirstName + " " + update.Message.From.LastName,
-					userid:   update.Message.From.ID,
-					state:    MessageStateInit,
+					fileid:            []string{},
+					username:          update.Message.From.UserName,
+					fullname:          update.Message.From.FirstName + " " + update.Message.From.LastName,
+					userid:            update.Message.From.ID,
+					originalmessageid: update.Message.MessageID,
+					state:             MessageStateInit,
 				}
 				vbbot.sendTextMessage(MediaGroupDelayMessage, update.Message.Chat.ID)
 			}
