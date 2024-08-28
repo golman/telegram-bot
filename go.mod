@@ -4,10 +4,7 @@ go 1.22.3
 
 toolchain go1.23.0
 
-require (
-	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
-	github.com/mymmrac/telego v0.31.2
-)
+require github.com/mymmrac/telego v0.31.2
 
 require (
 	github.com/andybalholm/brotli v1.1.0 // indirect
