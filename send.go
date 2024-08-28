@@ -5,6 +5,7 @@ import (
 	"log"
 
 	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego/telegoutil"
 )
 
 func (vbbot *VBBot) sendMediaGroupMessage(config *tgbotapi.SendMediaGroupParams) error {
@@ -17,8 +18,13 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 		vbbot.sayNoEmptyMessage(mm.userid)
 		return
 	}
-	// Изменение подписи
-	caption := mm.createCaption()
+
+	text, entities := telegoutil.MessageEntities(
+		telegoutil.Entity(mm.caption),
+		telegoutil.Entity("\n\n by: "),
+		telegoutil.Entity(mm.fullname).TextMentionWithID(mm.userid),
+	)
+
 	mgc := tgbotapi.SendMediaGroupParams{
 		ChatID: tgbotapi.ChatID{ID: vbbot.channelId},
 		Media:  make([]tgbotapi.InputMedia, 0),
@@ -26,7 +32,6 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 
 	for i := range mm.fileid {
 		ph := mm.fileid[i]
-		//imp := tgbotapi.NewInputMediaPhoto(tgbotapi.FileID(ph))
 		imp := tgbotapi.InputMediaPhoto{
 			Type: "photo",
 			Media: tgbotapi.InputFile{
@@ -34,8 +39,8 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 			},
 		}
 		if len(mgc.Media) == 0 {
-			imp.Caption = caption
-			imp.ParseMode = tgbotapi.ModeMarkdownV2
+			imp.Caption = text
+			imp.CaptionEntities = entities
 		}
 		mgc.Media = append(mgc.Media, &imp)
 	}
@@ -56,11 +61,11 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	// Получение фотографии с наибольшим размером
 	photo := (update.Message.Photo)[len(update.Message.Photo)-1]
 
-	// Изменение подписи
-	caption := createCaption(update.Message.Caption,
-		update.Message.From.FirstName+" "+update.Message.From.LastName,
-		update.Message.From.ID)
-
+	text, ents := telegoutil.MessageEntities(
+		telegoutil.Entity(update.Message.Text),
+		telegoutil.Entity("\n\n by: "),
+		telegoutil.Entity(update.Message.From.FirstName+" "+update.Message.From.LastName).TextMentionWithID(update.Message.From.ID),
+	)
 	// Создание сообщения с фотографией и измененной подписью
 	//msg := tgbotapi.NewPhoto(vbbot.channelId, tgbotapi.FileID(fileConfig.FileID))
 	msg := tgbotapi.SendMediaGroupParams{
@@ -71,8 +76,8 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 				Media: tgbotapi.InputFile{
 					FileID: photo.FileID,
 				},
-				Caption:   caption,
-				ParseMode: tgbotapi.ModeMarkdownV2,
+				Caption:         text,
+				CaptionEntities: ents,
 			},
 		},
 	}
@@ -89,15 +94,12 @@ func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
 		vbbot.sayNoEmptyMessage(update.Message.Chat.ID)
 		return
 	}
-	msg := tgbotapi.SendMessageParams{
-		ChatID: tgbotapi.ChatID{ID: vbbot.channelId},
-		Text:   update.Message.Text,
-	}
-	msg.Text = createCaption(msg.Text,
-		update.Message.From.FirstName+" "+update.Message.From.LastName,
-		update.Message.From.ID)
-	msg.ParseMode = tgbotapi.ModeMarkdownV2
-	err := vbbot.sendMessage(&msg)
+	emsg := telegoutil.MessageWithEntities(tgbotapi.ChatID{ID: vbbot.channelId},
+		telegoutil.Entity(update.Message.Text),
+		telegoutil.Entity("\n\n by: "),
+		telegoutil.Entity(update.Message.From.FirstName+" "+update.Message.From.LastName).TextMentionWithID(update.Message.From.ID),
+	)
+	err := vbbot.sendMessage(emsg)
 	if err != nil {
 		vbbot.handleError(err, update.Message.Chat.ID)
 	}

@@ -31,7 +31,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bot, err := tgbotapi.NewBot(botToken)
+	bot, err := tgbotapi.NewBot(botToken, tgbotapi.WithDefaultDebugLogger())
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -113,14 +113,4 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 	} else {
 		vbbot.sendPlainMessage(update)
 	}
-}
-
-func createCaption(caption string, fullname string, userid int64) string {
-	if strings.HasPrefix(caption, "!noescape!") {
-		caption = caption[10:]
-	} else {
-		caption = caption
-	}
-	return caption + "\n\n" +
-		"by: [" + fullname + "](tg://user?id=" + strconv.FormatInt(userid, 10) + ")"
 }

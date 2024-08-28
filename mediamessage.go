@@ -16,7 +16,3 @@ const (
 	MessageStateToBeSent
 	MessageStateToDelete
 )
-
-func (mm *MediaMessage) createCaption() string {
-	return createCaption(mm.caption, mm.fullname, mm.userid)
-}
