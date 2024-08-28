@@ -1,6 +1,6 @@
 package main
 
-import tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+import tgbotapi "github.com/mymmrac/telego"
 
 func (vbbot *VBBot) checkIfContainsDocument(update tgbotapi.Update) bool {
 	f := update.Message.Document != nil

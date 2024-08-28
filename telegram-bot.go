@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tgbotapi "github.com/mymmrac/telego"
 )
 
 type VBBot struct {
-	tgbot     *tgbotapi.BotAPI
+	tgbot     *tgbotapi.Bot
 	channelId int64
 	mediamsg  map[string]*MediaMessage
 	ticker    *time.Ticker
@@ -31,18 +31,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	bot, err := tgbotapi.NewBotAPI(botToken)
+	bot, err := tgbotapi.NewBot(botToken)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Чтобы получать информацию о входящих обновлениях
-	bot.Debug = true
+	updates, _ := bot.UpdatesViaLongPolling(nil)
 
-	updateConfig := tgbotapi.NewUpdate(0)
-	updateConfig.Timeout = 60
+	defer bot.StopLongPolling()
 
-	updates := bot.GetUpdatesChan(updateConfig)
 	b := VBBot{
 		tgbot:     bot,
 		channelId: channelID,
@@ -55,12 +52,12 @@ func main() {
 	b.Start(updates)
 }
 
-func (vbbot *VBBot) Start(ch tgbotapi.UpdatesChannel) {
+func (vbbot *VBBot) Start(ch <-chan tgbotapi.Update) {
 	for {
 		select {
 		case update := <-ch:
 			if update.Message != nil {
-				if !update.Message.IsCommand() {
+				if !IsCommand(update.Message) {
 					vbbot.handleUpdate(update)
 				}
 			}
@@ -79,6 +76,10 @@ func (vbbot *VBBot) Start(ch tgbotapi.UpdatesChannel) {
 	}
 }
 
+func IsCommand(msg *tgbotapi.Message) bool {
+	return msg.Text != "" && strings.HasPrefix(msg.Text, "/")
+}
+
 func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 	if !vbbot.authByChannel(update) {
 		vbbot.sendTextMessage(NotSubscribedMessage, update.Message.Chat.ID)
@@ -93,7 +94,7 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 			if _, ok := vbbot.mediamsg[update.Message.MediaGroupID]; !ok {
 				vbbot.mediamsg[update.Message.MediaGroupID] = &MediaMessage{
 					fileid:   []string{},
-					username: update.Message.From.UserName,
+					username: update.Message.From.Username,
 					fullname: update.Message.From.FirstName + " " + update.Message.From.LastName,
 					userid:   update.Message.From.ID,
 					state:    MessageStateInit,
@@ -118,9 +119,8 @@ func createCaption(caption string, fullname string, userid int64) string {
 	if strings.HasPrefix(caption, "!noescape!") {
 		caption = caption[10:]
 	} else {
-		caption = tgbotapi.EscapeText(tgbotapi.ModeMarkdownV2, caption)
+		caption = caption
 	}
-	fullname = tgbotapi.EscapeText(tgbotapi.ModeMarkdownV2, fullname)
 	return caption + "\n\n" +
 		"by: [" + fullname + "](tg://user?id=" + strconv.FormatInt(userid, 10) + ")"
 }
