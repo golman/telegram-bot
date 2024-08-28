@@ -215,6 +215,18 @@ func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 		Text:            "Текст изменен!!",
 	}
 	vbbot.tgbot.AnswerCallbackQuery(&callback)
+
+	btnDelete := tgbotapi.EditMessageTextParams{
+		ChatID:    tgbotapi.ChatID{ID: query.Message.GetChat().ID},
+		MessageID: query.Message.GetMessageID(),
+		Text:      "Объявление удалено",
+	}
+	_, err = vbbot.tgbot.EditMessageText(&btnDelete)
+	if err != nil {
+		vbbot.handleError(err, msg.Chat.ID)
+		return
+	}
+
 }
 
 func (vbbot *VBBot) handleCallbackError(query *tgbotapi.CallbackQuery, message string) {
