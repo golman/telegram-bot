@@ -39,7 +39,7 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 	if err != nil {
 		vbbot.handleError(err, mm.userid)
 	} else {
-		vbbot.confirmNewInzerat(mm.userid, mm.originalmessageid, sentMsg[0])
+		vbbot.confirmNewAd(mm.userid, mm.originalmessageid, sentMsg[0])
 	}
 
 }
@@ -68,12 +68,11 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	msg.ParseMode = tgbotapi.ModeMarkdownV2
 
 	// Отправка сообщения с фотографией и подписью
-	// err := vbbot.sendMessage(msg)
 	sentMsg, err := vbbot.tgbot.Send(msg)
 	if err != nil {
 		vbbot.handleError(err, update.Message.Chat.ID)
 	} else {
-		vbbot.confirmNewInzerat(update.Message.From.ID, update.Message.MessageID, sentMsg)
+		vbbot.confirmNewAd(update.Message.From.ID, update.Message.MessageID, sentMsg)
 	}
 }
 
@@ -94,16 +93,16 @@ func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
 		vbbot.handleError(err, update.Message.Chat.ID)
 		return
 	} else {
-		vbbot.confirmNewInzerat(update.Message.From.ID, update.Message.MessageID, sentMsg)
+		vbbot.confirmNewAd(update.Message.From.ID, update.Message.MessageID, sentMsg)
 	}
 }
 
-func (vbbot *VBBot) confirmNewInzerat(chatId int64, replyToId int, sentMsg tgbotapi.Message) {
-	buttonMsg := tgbotapi.NewMessage(chatId, "Объявление опубликовано.\nНажми на кнопку чтобы отметить проданным.")
+func (vbbot *VBBot) confirmNewAd(chatId int64, replyToId int, sentMsg tgbotapi.Message) {
+	buttonMsg := tgbotapi.NewMessage(chatId, "Объявление опубликовано.\nНажми на кнопку чтобы отметить как неактуальное.")
 	buttonMsg.ReplyToMessageID = replyToId
 	buttonMsg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(
 		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("Кнопка!", "delete_"+strconv.Itoa(int(sentMsg.Chat.ID))+"_"+strconv.Itoa(sentMsg.MessageID)),
+			tgbotapi.NewInlineKeyboardButtonData("Не актуально", "delete_"+strconv.Itoa(int(sentMsg.Chat.ID))+"_"+strconv.Itoa(sentMsg.MessageID)),
 		),
 	)
 	if err := vbbot.sendMessage(buttonMsg); err != nil {

@@ -101,28 +101,41 @@ func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	var editedMsg tgbotapi.Chattable
 
 	if len(query.Message.ReplyToMessage.Caption) == 0 {
-		editedMsg = tgbotapi.NewEditMessageText(chatID, messageID, "Продано!")
+		msg := tgbotapi.NewEditMessageText(chatID, messageID, "")
+		msg.Text = "Не актуально\\.\n\n" + createObsoletteCaption(query.Message.ReplyToMessage.Text,
+			query.Message.ReplyToMessage.From.FirstName+" "+query.Message.ReplyToMessage.From.LastName,
+			query.Message.ReplyToMessage.From.ID)
+		msg.ParseMode = tgbotapi.ModeMarkdownV2
+
+		sentMsg, err := vbbot.tgbot.Send(msg)
+		if err != nil {
+			vbbot.handleError(err, query.Message.Chat.ID)
+			return
+		} else {
+			vbbot.confirmNewAd(query.Message.From.ID, query.Message.MessageID, sentMsg)
+		}
+
 	} else {
-		editedMsg = tgbotapi.NewEditMessageCaption(chatID, messageID, "Продано!")
+		msg := tgbotapi.NewEditMessageCaption(chatID, messageID, "")
+		msg.Caption = "Не актуально\\.\n\n" + createObsoletteCaption(query.Message.ReplyToMessage.Caption,
+			query.Message.ReplyToMessage.From.FirstName+" "+query.Message.ReplyToMessage.From.LastName,
+			query.Message.ReplyToMessage.From.ID)
+		msg.ParseMode = tgbotapi.ModeMarkdownV2
+
+		sentMsg, err := vbbot.tgbot.Send(msg)
+		if err != nil {
+			vbbot.handleError(err, query.Message.Chat.ID)
+			return
+		} else {
+			vbbot.confirmNewAd(query.Message.From.ID, query.Message.MessageID, sentMsg)
+		}
 	}
 
-	_, err = vbbot.tgbot.Send(editedMsg)
-	if err != nil {
-		vbbot.handleCallbackError(query, "Ой!")
-		log.Println("Error editing message:", err)
-		return
-	}
-
-	// Optionally, confirm the successful edit to the user
-	callback := tgbotapi.NewCallback(query.ID, "Всё!")
+	callback := tgbotapi.NewCallback(query.ID, "Ok!")
 	vbbot.tgbot.Request(callback)
 
-	editedMsg = tgbotapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, "Продано!")
+	editedMsg = tgbotapi.NewEditMessageText(query.Message.Chat.ID, query.Message.MessageID, "Не актульно.")
 	_, err = vbbot.tgbot.Send(editedMsg)
-
-	// deletedMsg := tgbotapi.NewDeleteMessage(query.Message.Chat.ID, query.Message.MessageID)
-	// _, err = vbbot.tgbot.Request(deletedMsg)
-
 }
 
 func (vbbot *VBBot) handleCallbackError(query *tgbotapi.CallbackQuery, message string) {
@@ -174,6 +187,17 @@ func createCaption(caption string, fullname string, userid int64) string {
 		caption = caption[10:]
 	} else {
 		caption = tgbotapi.EscapeText(tgbotapi.ModeMarkdownV2, caption)
+	}
+	fullname = tgbotapi.EscapeText(tgbotapi.ModeMarkdownV2, fullname)
+	return caption + "\n\n" +
+		"by: [" + fullname + "](tg://user?id=" + strconv.FormatInt(userid, 10) + ")"
+}
+
+func createObsoletteCaption(caption string, fullname string, userid int64) string {
+	if strings.HasPrefix(caption, "!noescape!") {
+		caption = caption[10:]
+	} else {
+		caption = tgbotapi.EscapeText(tgbotapi.ModeMarkdownV2, "\\~"+caption+"\\~")
 	}
 	fullname = tgbotapi.EscapeText(tgbotapi.ModeMarkdownV2, fullname)
 	return caption + "\n\n" +
