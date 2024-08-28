@@ -149,6 +149,108 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 
 func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	parts := strings.Split(query.Data, "_")
+	if len(parts) != 3 {
+		return
+	}
+
+	if parts[0] == "delete" {
+		vbbot.handleMarkAsDeprecated(query)
+	} else if parts[0] == "restore" {
+		vbbot.handleRestore(query)
+	}
+}
+
+func (vbbot *VBBot) handleRestore(query *tgbotapi.CallbackQuery) {
+	parts := strings.Split(query.Data, "_")
+	if len(parts) != 3 || parts[0] != "restore" {
+		return
+	}
+
+	chatID, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		vbbot.handleCallbackError(query, "Invalid chat ID")
+		return
+	}
+
+	messageID, err := strconv.Atoi(parts[2])
+	if err != nil {
+		vbbot.handleCallbackError(query, "Invalid message ID")
+		return
+	}
+	var msg *tgbotapi.Message
+	if query.Message.IsAccessible() {
+		msg = query.Message.(*tgbotapi.Message)
+	} else {
+		vbbot.handleCallbackError(query, "Message is not accessible")
+	}
+
+	if len(msg.ReplyToMessage.Caption) == 0 {
+		text, ents := telegoutil.MessageEntities(
+			telegoutil.Entity(msg.ReplyToMessage.Text),
+			telegoutil.Entity("\n\n by: "),
+			telegoutil.Entity(msg.ReplyToMessage.From.FirstName+" "+msg.ReplyToMessage.From.LastName).TextMentionWithID(msg.ReplyToMessage.From.ID))
+		ents = append(ents, msg.ReplyToMessage.Entities...)
+		edMsg := tgbotapi.EditMessageTextParams{
+			ChatID:    tgbotapi.ChatID{ID: chatID},
+			MessageID: messageID,
+			Text:      text,
+			Entities:  ents,
+		}
+		_, err := vbbot.tgbot.EditMessageText(&edMsg)
+		if err != nil {
+			vbbot.handleError(err, msg.Chat.ID)
+			return
+		}
+	} else {
+		text, ents := telegoutil.MessageEntities(
+			telegoutil.Entity(msg.ReplyToMessage.Caption),
+			telegoutil.Entity("\n\n by: "),
+			telegoutil.Entity(msg.ReplyToMessage.From.FirstName+" "+msg.ReplyToMessage.From.LastName).TextMentionWithID(msg.ReplyToMessage.From.ID))
+		ents = append(ents, msg.ReplyToMessage.CaptionEntities...)
+		edMsg := tgbotapi.EditMessageCaptionParams{
+			ChatID:          tgbotapi.ChatID{ID: chatID},
+			MessageID:       messageID,
+			Caption:         text,
+			CaptionEntities: ents,
+		}
+		_, err := vbbot.tgbot.EditMessageCaption(&edMsg)
+		if err != nil {
+			vbbot.handleError(err, msg.Chat.ID)
+			return
+		}
+	}
+
+	callback := tgbotapi.AnswerCallbackQueryParams{
+		CallbackQueryID: query.ID,
+		Text:            "Объявление восстановлено",
+	}
+	vbbot.tgbot.AnswerCallbackQuery(&callback)
+
+	btnDelete := tgbotapi.EditMessageTextParams{
+		ChatID:    tgbotapi.ChatID{ID: query.Message.GetChat().ID},
+		MessageID: query.Message.GetMessageID(),
+		Text:      "Объявление восстановлено",
+		ReplyMarkup: &tgbotapi.InlineKeyboardMarkup{
+			InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
+				{
+					tgbotapi.InlineKeyboardButton{
+						Text:         "Не актуально",
+						CallbackData: "delete_" + strconv.Itoa(int(chatID)) + "_" + strconv.Itoa(messageID),
+					},
+				},
+			},
+		},
+	}
+	_, err = vbbot.tgbot.EditMessageText(&btnDelete)
+	if err != nil {
+		vbbot.handleError(err, msg.Chat.ID)
+		return
+	}
+
+}
+
+func (vbbot *VBBot) handleMarkAsDeprecated(query *tgbotapi.CallbackQuery) {
+	parts := strings.Split(query.Data, "_")
 	if len(parts) != 3 || parts[0] != "delete" {
 		return
 	}
@@ -212,21 +314,30 @@ func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 
 	callback := tgbotapi.AnswerCallbackQueryParams{
 		CallbackQueryID: query.ID,
-		Text:            "Текст изменен!!",
+		Text:            "Объявление помечено как неактуальное",
 	}
 	vbbot.tgbot.AnswerCallbackQuery(&callback)
 
 	btnDelete := tgbotapi.EditMessageTextParams{
 		ChatID:    tgbotapi.ChatID{ID: query.Message.GetChat().ID},
 		MessageID: query.Message.GetMessageID(),
-		Text:      "Объявление удалено",
+		Text:      "Объявление помечено как неактуальное",
+		ReplyMarkup: &tgbotapi.InlineKeyboardMarkup{
+			InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
+				{
+					tgbotapi.InlineKeyboardButton{
+						Text:         "Восстановить",
+						CallbackData: "restore_" + strconv.Itoa(int(chatID)) + "_" + strconv.Itoa(messageID),
+					},
+				},
+			},
+		},
 	}
 	_, err = vbbot.tgbot.EditMessageText(&btnDelete)
 	if err != nil {
 		vbbot.handleError(err, msg.Chat.ID)
 		return
 	}
-
 }
 
 func (vbbot *VBBot) handleCallbackError(query *tgbotapi.CallbackQuery, message string) {

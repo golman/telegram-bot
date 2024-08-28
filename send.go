@@ -8,11 +8,6 @@ import (
 	"github.com/mymmrac/telego/telegoutil"
 )
 
-func (vbbot *VBBot) sendMediaGroupMessage(config *tgbotapi.SendMediaGroupParams) error {
-	_, err := vbbot.tgbot.SendMediaGroup(config)
-	return err
-}
-
 func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 	if mm.caption == "" {
 		vbbot.sayNoEmptyMessage(mm.userid)
@@ -69,8 +64,6 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 		telegoutil.Entity(update.Message.From.FirstName+" "+update.Message.From.LastName).TextMentionWithID(update.Message.From.ID),
 	)
 	ents = append(ents, update.Message.CaptionEntities...)
-	// Создание сообщения с фотографией и измененной подписью
-	//msg := tgbotapi.NewPhoto(vbbot.channelId, tgbotapi.FileID(fileConfig.FileID))
 	msg := tgbotapi.SendMediaGroupParams{
 		ChatID: tgbotapi.ChatID{ID: vbbot.channelId},
 		Media: []tgbotapi.InputMedia{
