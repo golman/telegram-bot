@@ -24,7 +24,7 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 		telegoutil.Entity("\n\n by: "),
 		telegoutil.Entity(mm.fullname).TextMentionWithID(mm.userid),
 	)
-
+	entities = append(entities, mm.entities...)
 	mgc := tgbotapi.SendMediaGroupParams{
 		ChatID: tgbotapi.ChatID{ID: vbbot.channelId},
 		Media:  make([]tgbotapi.InputMedia, 0),
@@ -62,10 +62,11 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	photo := (update.Message.Photo)[len(update.Message.Photo)-1]
 
 	text, ents := telegoutil.MessageEntities(
-		telegoutil.Entity(update.Message.Text),
+		telegoutil.Entity(update.Message.Caption),
 		telegoutil.Entity("\n\n by: "),
 		telegoutil.Entity(update.Message.From.FirstName+" "+update.Message.From.LastName).TextMentionWithID(update.Message.From.ID),
 	)
+	ents = append(ents, update.Message.CaptionEntities...)
 	// Создание сообщения с фотографией и измененной подписью
 	//msg := tgbotapi.NewPhoto(vbbot.channelId, tgbotapi.FileID(fileConfig.FileID))
 	msg := tgbotapi.SendMediaGroupParams{
@@ -95,10 +96,11 @@ func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
 		return
 	}
 	emsg := telegoutil.MessageWithEntities(tgbotapi.ChatID{ID: vbbot.channelId},
-		telegoutil.Entity(update.Message.Text),
+		telegoutil.Entity(update.Message.Text).Bold(),
 		telegoutil.Entity("\n\n by: "),
 		telegoutil.Entity(update.Message.From.FirstName+" "+update.Message.From.LastName).TextMentionWithID(update.Message.From.ID),
 	)
+	emsg.Entities = append(emsg.Entities, update.Message.Entities...)
 	err := vbbot.sendMessage(emsg)
 	if err != nil {
 		vbbot.handleError(err, update.Message.Chat.ID)

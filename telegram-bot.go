@@ -98,6 +98,7 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 					fullname: update.Message.From.FirstName + " " + update.Message.From.LastName,
 					userid:   update.Message.From.ID,
 					state:    MessageStateInit,
+					entities: update.Message.CaptionEntities,
 				}
 				vbbot.sendTextMessage(MediaGroupDelayMessage, update.Message.Chat.ID)
 			}
