@@ -45,9 +45,11 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 		mgc.Media = append(mgc.Media, &imp)
 	}
 
-	err := vbbot.sendMediaGroupMessage(&mgc)
+	sentMsg, err := vbbot.tgbot.SendMediaGroup(&mgc)
 	if err != nil {
 		vbbot.handleError(err, mm.userid)
+	} else {
+		vbbot.confirmNewAd(mm.userid, mm.originalmessageid, sentMsg[0])
 	}
 
 }
@@ -84,9 +86,11 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	}
 
 	// Отправка сообщения с фотографией и подписью
-	err := vbbot.sendMedia(&msg)
+	sentMsg, err := vbbot.tgbot.SendMediaGroup(&msg)
 	if err != nil {
 		vbbot.handleError(err, update.Message.Chat.ID)
+	} else {
+		vbbot.confirmNewAd(update.Message.From.ID, update.Message.MessageID, sentMsg[0])
 	}
 }
 
@@ -101,9 +105,11 @@ func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
 		telegoutil.Entity(update.Message.From.FirstName+" "+update.Message.From.LastName).TextMentionWithID(update.Message.From.ID),
 	)
 	emsg.Entities = append(emsg.Entities, update.Message.Entities...)
-	err := vbbot.sendMessage(emsg)
+	sentMsg, err := vbbot.tgbot.SendMessage(emsg)
 	if err != nil {
 		vbbot.handleError(err, update.Message.Chat.ID)
+	} else {
+		vbbot.confirmNewAd(update.Message.From.ID, update.Message.MessageID, *sentMsg)
 	}
 }
 
@@ -120,11 +126,6 @@ func (vbbot *VBBot) sendTextMessage(txtMsg string, chatId int64) {
 
 func (vbbot *VBBot) sendMessage(msg *tgbotapi.SendMessageParams) error {
 	_, err := vbbot.tgbot.SendMessage(msg)
-	return err
-}
-
-func (vbbot *VBBot) sendMedia(msg *tgbotapi.SendMediaGroupParams) error {
-	_, err := vbbot.tgbot.SendMediaGroup(msg)
 	return err
 }
 
