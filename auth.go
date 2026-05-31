@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	tgbotapi "github.com/mymmrac/telego"
@@ -13,7 +14,7 @@ func (vbbot *VBBot) authByChannel(update tgbotapi.Update) bool {
 	cmc := tgbotapi.GetChatMemberParams{}
 	cmc.UserID = update.Message.From.ID
 	cmc.ChatID = tgbotapi.ChatID{ID: vbbot.channelId}
-	cm, err := vbbot.tgbot.GetChatMember(&cmc)
+	cm, err := vbbot.tgbot.GetChatMember(context.Background(), &cmc)
 
 	if err != nil {
 		log.Fatalln(err)

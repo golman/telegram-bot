@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"strconv"
@@ -37,9 +38,13 @@ func main() {
 		log.Fatal(err)
 	}
 
-	updates, _ := bot.UpdatesViaLongPolling(nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	defer bot.StopLongPolling()
+	updates, err := bot.UpdatesViaLongPolling(ctx, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	b := VBBot{
 		tgbot:     bot,
@@ -196,7 +201,7 @@ func (vbbot *VBBot) handleRestore(query *tgbotapi.CallbackQuery) {
 			Text:      text,
 			Entities:  ents,
 		}
-		_, err := vbbot.tgbot.EditMessageText(&edMsg)
+		_, err := vbbot.tgbot.EditMessageText(context.Background(), &edMsg)
 		if err != nil {
 			vbbot.handleError(err, msg.Chat.ID)
 			return
@@ -213,7 +218,7 @@ func (vbbot *VBBot) handleRestore(query *tgbotapi.CallbackQuery) {
 			Caption:         text,
 			CaptionEntities: ents,
 		}
-		_, err := vbbot.tgbot.EditMessageCaption(&edMsg)
+		_, err := vbbot.tgbot.EditMessageCaption(context.Background(), &edMsg)
 		if err != nil {
 			vbbot.handleError(err, msg.Chat.ID)
 			return
@@ -224,7 +229,7 @@ func (vbbot *VBBot) handleRestore(query *tgbotapi.CallbackQuery) {
 		CallbackQueryID: query.ID,
 		Text:            "Объявление восстановлено",
 	}
-	vbbot.tgbot.AnswerCallbackQuery(&callback)
+	vbbot.tgbot.AnswerCallbackQuery(context.Background(), &callback)
 
 	btnDelete := tgbotapi.EditMessageTextParams{
 		ChatID:    tgbotapi.ChatID{ID: query.Message.GetChat().ID},
@@ -241,7 +246,7 @@ func (vbbot *VBBot) handleRestore(query *tgbotapi.CallbackQuery) {
 			},
 		},
 	}
-	_, err = vbbot.tgbot.EditMessageText(&btnDelete)
+	_, err = vbbot.tgbot.EditMessageText(context.Background(), &btnDelete)
 	if err != nil {
 		vbbot.handleError(err, msg.Chat.ID)
 		return
@@ -286,7 +291,7 @@ func (vbbot *VBBot) handleMarkAsDeprecated(query *tgbotapi.CallbackQuery) {
 			Text:      text,
 			Entities:  ents,
 		}
-		_, err := vbbot.tgbot.EditMessageText(&edMsg)
+		_, err := vbbot.tgbot.EditMessageText(context.Background(), &edMsg)
 		if err != nil {
 			vbbot.handleError(err, msg.Chat.ID)
 			return
@@ -305,7 +310,7 @@ func (vbbot *VBBot) handleMarkAsDeprecated(query *tgbotapi.CallbackQuery) {
 			Caption:         text,
 			CaptionEntities: ents,
 		}
-		_, err := vbbot.tgbot.EditMessageCaption(&edMsg)
+		_, err := vbbot.tgbot.EditMessageCaption(context.Background(), &edMsg)
 		if err != nil {
 			vbbot.handleError(err, msg.Chat.ID)
 			return
@@ -316,7 +321,7 @@ func (vbbot *VBBot) handleMarkAsDeprecated(query *tgbotapi.CallbackQuery) {
 		CallbackQueryID: query.ID,
 		Text:            "Объявление помечено как неактуальное",
 	}
-	vbbot.tgbot.AnswerCallbackQuery(&callback)
+	vbbot.tgbot.AnswerCallbackQuery(context.Background(), &callback)
 
 	btnDelete := tgbotapi.EditMessageTextParams{
 		ChatID:    tgbotapi.ChatID{ID: query.Message.GetChat().ID},
@@ -333,7 +338,7 @@ func (vbbot *VBBot) handleMarkAsDeprecated(query *tgbotapi.CallbackQuery) {
 			},
 		},
 	}
-	_, err = vbbot.tgbot.EditMessageText(&btnDelete)
+	_, err = vbbot.tgbot.EditMessageText(context.Background(), &btnDelete)
 	if err != nil {
 		vbbot.handleError(err, msg.Chat.ID)
 		return
@@ -345,5 +350,5 @@ func (vbbot *VBBot) handleCallbackError(query *tgbotapi.CallbackQuery, message s
 		CallbackQueryID: query.ID,
 		Text:            message,
 	}
-	vbbot.tgbot.AnswerCallbackQuery(&callback)
+	vbbot.tgbot.AnswerCallbackQuery(context.Background(), &callback)
 }

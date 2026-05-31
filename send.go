@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -40,7 +41,7 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 		mgc.Media = append(mgc.Media, &imp)
 	}
 
-	sentMsg, err := vbbot.tgbot.SendMediaGroup(&mgc)
+	sentMsg, err := vbbot.tgbot.SendMediaGroup(context.Background(), &mgc)
 	if err != nil {
 		vbbot.handleError(err, mm.userid)
 	} else {
@@ -79,7 +80,7 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	}
 
 	// Отправка сообщения с фотографией и подписью
-	sentMsg, err := vbbot.tgbot.SendMediaGroup(&msg)
+	sentMsg, err := vbbot.tgbot.SendMediaGroup(context.Background(), &msg)
 	if err != nil {
 		vbbot.handleError(err, update.Message.Chat.ID)
 	} else {
@@ -98,7 +99,7 @@ func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
 		telegoutil.Entity(update.Message.From.FirstName+" "+update.Message.From.LastName).TextMentionWithID(update.Message.From.ID),
 	)
 	emsg.Entities = append(emsg.Entities, update.Message.Entities...)
-	sentMsg, err := vbbot.tgbot.SendMessage(emsg)
+	sentMsg, err := vbbot.tgbot.SendMessage(context.Background(), emsg)
 	if err != nil {
 		vbbot.handleError(err, update.Message.Chat.ID)
 	} else {
@@ -118,7 +119,7 @@ func (vbbot *VBBot) sendTextMessage(txtMsg string, chatId int64) {
 }
 
 func (vbbot *VBBot) sendMessage(msg *tgbotapi.SendMessageParams) error {
-	_, err := vbbot.tgbot.SendMessage(msg)
+	_, err := vbbot.tgbot.SendMessage(context.Background(), msg)
 	return err
 }
 
@@ -129,7 +130,7 @@ func (vbbot *VBBot) handleError(msgErr error, chatId int64) {
 		ChatID: tgbotapi.ChatID{ID: chatId},
 		Text:   errmsg,
 	}
-	_, err := vbbot.tgbot.SendMessage(&botMsg)
+	_, err := vbbot.tgbot.SendMessage(context.Background(), &botMsg)
 	if err != nil {
 		log.Println(err)
 	}
