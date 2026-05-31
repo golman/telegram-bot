@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -29,12 +28,13 @@ func main() {
 		log.Fatalf("failed to initialize logging: %v", err)
 	}
 
-	botToken := os.Getenv("BOT_TOKEN")
-	channelIDStr := os.Getenv("CHANNEL_ID")
-	authEnabledStr := os.Getenv("BOT_AUTH_ENABLED")
-	channelID, err := strconv.ParseInt(channelIDStr, 10, 64)
-	if err != nil {
-		log.Fatal(err)
+	botToken := getEnvOrDefault("BOT_TOKEN", "")
+	if botToken == "" {
+		log.Fatal("BOT_TOKEN is not set")
+	}
+	channelID := getEnvInt64OrDefault("CHANNEL_ID", 0)
+	if channelID == 0 {
+		log.Fatal("CHANNEL_ID is not set or invalid")
 	}
 
 	bot, err := tgbotapi.NewBot(botToken, tgbotapi.WithDefaultDebugLogger())
@@ -56,7 +56,7 @@ func main() {
 		mediamsg:  map[string]*MediaMessage{},
 		ticker:    time.NewTicker(5 * time.Second),
 		cfg: VBBotCfg{
-			authEnabled: authEnabledStr == "true",
+			authEnabled: getEnvBoolOrDefault("BOT_AUTH_ENABLED", true),
 		},
 	}
 	b.Start(updates)

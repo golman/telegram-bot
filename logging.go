@@ -94,3 +94,16 @@ func getEnvBoolOrDefault(key string, fallback bool) bool {
 	}
 	return value
 }
+
+func getEnvInt64OrDefault(key string, fallback int64) int64 {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || value <= 0 {
+		log.Printf("invalid %s=%q, using default %d", key, raw, fallback)
+		return fallback
+	}
+	return value
+}
