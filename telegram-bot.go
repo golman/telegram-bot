@@ -25,6 +25,10 @@ type VBBotCfg struct {
 }
 
 func main() {
+	if err := setupLogging(); err != nil {
+		log.Fatalf("failed to initialize logging: %v", err)
+	}
+
 	botToken := os.Getenv("BOT_TOKEN")
 	channelIDStr := os.Getenv("CHANNEL_ID")
 	authEnabledStr := os.Getenv("BOT_AUTH_ENABLED")

@@ -1,8 +1,11 @@
 module TelegramBot
 
-go 1.25.7
+go 1.26
 
-require github.com/mymmrac/telego v1.9.0
+require (
+	github.com/mymmrac/telego v1.9.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
+)
 
 require (
 	github.com/andybalholm/brotli v1.2.1 // indirect
