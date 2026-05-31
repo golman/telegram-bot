@@ -101,7 +101,7 @@ func getEnvInt64OrDefault(key string, fallback int64) int64 {
 		return fallback
 	}
 	value, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil || value <= 0 {
+	if err != nil {
 		log.Printf("invalid %s=%q, using default %d", key, raw, fallback)
 		return fallback
 	}
