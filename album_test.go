@@ -146,12 +146,9 @@ func TestAlbumEndToEnd(t *testing.T) {
 			if got := f.byMethod("sendMediaGroup"); len(got) != 0 {
 				t.Fatalf("после первого шага тикера sendMediaGroup вызван %d раз, ожидалось 0", len(got))
 			}
-			// Второй шаг отправляет альбом, третий удаляет накопитель.
+			// Второй шаг отправляет альбом. Удаление накопителя проверяет
+			// TestLateAlbumItem.
 			vb.tick()
-			vb.tick()
-			if len(vb.mediamsg) != 0 {
-				t.Fatalf("после трёх шагов тикера осталось медиагрупп: %d", len(vb.mediamsg))
-			}
 
 			sent := f.byMethod("sendMessage")
 			delays := 0
@@ -289,5 +286,69 @@ func TestAlbumEndToEnd(t *testing.T) {
 				t.Errorf("entities после restore = %+v, при публикации было %+v", got, pubEntities)
 			}
 		})
+	}
+}
+
+// TestLateAlbumItem: фото альбома, пришедшие после его публикации, не создают
+// новый альбом без подписи. Автор один раз узнаёт, что они не попали
+// в объявление. Накопитель хранится albumLateWindowTicks шагов тикера
+// после отправки и затем удаляется.
+func TestLateAlbumItem(t *testing.T) {
+	vb, f := newTestBot(t, nil)
+	vb.mediamsg = map[string]*MediaMessage{}
+	vb.cfg.authEnabled = false
+
+	vb.handleUpdate(tgbotapi.Update{Message: albumItem(100, "p1", "Продам", nil)})
+	vb.tick()
+	vb.tick()
+	if got := len(f.byMethod("sendMediaGroup")); got != 1 {
+		t.Fatalf("sendMediaGroup вызван %d раз, ожидался один", got)
+	}
+	before := len(f.byMethod("sendMessage"))
+
+	// Окно ожидания почти истекло, а фото всё ещё приходят.
+	for i := 0; i < albumLateWindowTicks-1; i++ {
+		vb.tick()
+	}
+	vb.handleUpdate(tgbotapi.Update{Message: albumItem(101, "p2", "", nil)})
+	vb.handleUpdate(tgbotapi.Update{Message: albumItem(102, "p3", "", nil)})
+	for i := 0; i < 3; i++ {
+		vb.tick()
+	}
+
+	if got := len(f.byMethod("sendMediaGroup")); got != 1 {
+		t.Errorf("sendMediaGroup вызван %d раз, опоздавшие фото публиковаться не должны", got)
+	}
+	sent := f.byMethod("sendMessage")[before:]
+	if len(sent) != 1 {
+		t.Fatalf("после опоздавших фото автору ушло %d сообщений, ожидалось одно", len(sent))
+	}
+	if got := jsonString(t, sent[0].body, "text"); got != AlbumItemLateMessage {
+		t.Errorf("автору ушло %q, ожидалось %q", got, AlbumItemLateMessage)
+	}
+	if got := jsonInt(t, sent[0].body, "chat_id"); got != testAlbumAuthorID {
+		t.Errorf("сообщение ушло в чат %d, ожидался чат автора %d", got, testAlbumAuthorID)
+	}
+	if len(vb.mediamsg) != 0 {
+		t.Errorf("после окна ожидания осталось медиагрупп: %d", len(vb.mediamsg))
+	}
+}
+
+// TestSentAlbumKeptForLateWindow: отправленный альбом удаляется ровно
+// через albumLateWindowTicks шагов тикера, а не на следующем шаге.
+func TestSentAlbumKeptForLateWindow(t *testing.T) {
+	captureLog(t)
+	vb, _ := newTestBot(t, nil)
+	vb.mediamsg = map[string]*MediaMessage{"album": pendingAlbum(MessageStateToBeSent)}
+
+	vb.tick()
+	for i := 0; i < albumLateWindowTicks; i++ {
+		if _, ok := vb.mediamsg["album"]; !ok {
+			t.Fatalf("альбом удалён через %d шагов после отправки, ожидалось %d", i, albumLateWindowTicks)
+		}
+		vb.tick()
+	}
+	if _, ok := vb.mediamsg["album"]; ok {
+		t.Fatalf("альбом не удалён через %d шагов после отправки", albumLateWindowTicks)
 	}
 }

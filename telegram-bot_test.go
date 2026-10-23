@@ -216,12 +216,14 @@ func TestTickRecoversFromAlbumPanic(t *testing.T) {
 		t.Fatalf("после паники состояние альбома %d, ожидалось ToDelete (%d)", got, MessageStateToDelete)
 	}
 
-	b.tick()
+	for i := 0; i < albumLateWindowTicks; i++ {
+		b.tick()
+	}
 	if n := strings.Count(logs.String(), "паника при отправке альбома"); n != 1 {
 		t.Errorf("паника в логе %d раз, отправка не должна повторяться", n)
 	}
 	if len(b.mediamsg) != 0 {
-		t.Errorf("после второго тика осталось медиагрупп: %d", len(b.mediamsg))
+		t.Errorf("после окна ожидания осталось медиагрупп: %d", len(b.mediamsg))
 	}
 }
 

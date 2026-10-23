@@ -2,7 +2,9 @@ package main
 
 const (
 	MediaGroupDelayMessage = "Сообщение будет отправлено в канал через 10 секунд"
-	NotSubscribedMessage   = "Вы не подписаны на канал"
+	// AlbumItemLateMessage отправляется, если фото альбома пришли после его публикации.
+	AlbumItemLateMessage = "Часть фото из альбома пришла после публикации и не попала в объявление. Если они нужны, отправьте объявление заново одним альбомом"
+	NotSubscribedMessage = "Вы не подписаны на канал"
 	// AuthCheckFailedMessage отправляется, если Telegram не ответил на проверку подписки.
 	AuthCheckFailedMessage = "Не удалось проверить подписку на канал. Попробуйте позже"
 	FiltersFailedMessage   = "Сообщение не прошло фильтры и не будет отправлено в канал"

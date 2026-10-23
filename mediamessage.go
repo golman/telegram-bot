@@ -11,6 +11,10 @@ type MediaMessage struct {
 	entities          []tgbotapi.MessageEntity
 	state             MessageState
 	originalmessageid int
+	// ticksLeft — сколько шагов тикера альбом в состоянии ToDelete ещё хранится.
+	ticksLeft int
+	// lateNotified — автор уже получил AlbumItemLateMessage.
+	lateNotified bool
 }
 
 type MessageState int
@@ -18,8 +22,14 @@ type MessageState int
 const (
 	MessageStateInit MessageState = iota
 	MessageStateToBeSent
+	// MessageStateToDelete — альбом отправлен (или отклонён) и хранится ещё
+	// albumLateWindowTicks шагов тикера, чтобы опоздавшие фото не создали новый альбом.
 	MessageStateToDelete
 )
+
+// albumLateWindowTicks — сколько шагов тикера (около минуты при шаге 5 секунд)
+// отправленный альбом ждёт опоздавшие фото, прежде чем удалиться.
+const albumLateWindowTicks = 12
 
 // newMediaMessage создаёт накопитель альбома по первому полученному элементу.
 // Фото и подпись сюда не попадают: их добавляет addItem.

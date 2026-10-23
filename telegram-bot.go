@@ -120,6 +120,7 @@ func (vbbot *VBBot) flushMediaGroups() {
 // на каждом шаге тикера.
 func (vbbot *VBBot) publishAlbum(id string, mm *MediaMessage) {
 	mm.state = MessageStateToDelete
+	mm.ticksLeft = albumLateWindowTicks
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("паника при отправке альбома %s: %v\n%s", id, r, debug.Stack())
@@ -128,8 +129,21 @@ func (vbbot *VBBot) publishAlbum(id string, mm *MediaMessage) {
 	vbbot.sendMediaGroup(mm)
 }
 
+// rejectLateAlbumItem обрабатывает фото альбома, который уже отправлен:
+// добавить его в опубликованный пост нельзя, поэтому автор один раз на альбом
+// получает AlbumItemLateMessage.
+func (vbbot *VBBot) rejectLateAlbumItem(mm *MediaMessage, msg *tgbotapi.Message) {
+	log.Printf("фото %d пришло после отправки альбома %s и не опубликовано", msg.MessageID, msg.MediaGroupID)
+	if mm.lateNotified {
+		return
+	}
+	mm.lateNotified = true
+	vbbot.sendTextMessage(AlbumItemLateMessage, msg.Chat.ID)
+}
+
 // tick — один шаг тикера: переводит каждую накопленную медиагруппу
-// по состояниям Init → ToBeSent → (отправка) → ToDelete → удаление.
+// по состояниям Init → ToBeSent → (отправка) → ToDelete → (albumLateWindowTicks
+// шагов ожидания опоздавших фото) → удаление.
 // Вызывается только из цикла событий Start (и из тестов).
 func (vbbot *VBBot) tick() {
 	for k, v := range vbbot.mediamsg {
@@ -138,7 +152,10 @@ func (vbbot *VBBot) tick() {
 		} else if v.state == MessageStateToBeSent {
 			vbbot.publishAlbum(k, v)
 		} else if v.state == MessageStateToDelete {
-			delete(vbbot.mediamsg, k)
+			v.ticksLeft--
+			if v.ticksLeft <= 0 {
+				delete(vbbot.mediamsg, k)
+			}
 		}
 	}
 }
@@ -209,6 +226,10 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 				mm = newMediaMessage(update.Message)
 				vbbot.mediamsg[update.Message.MediaGroupID] = mm
 				vbbot.sendTextMessage(MediaGroupDelayMessage, update.Message.Chat.ID)
+			}
+			if mm.state == MessageStateToDelete {
+				vbbot.rejectLateAlbumItem(mm, update.Message)
+				return
 			}
 			mm.addItem(update.Message)
 		} else {
