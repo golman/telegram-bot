@@ -3,12 +3,11 @@ package main
 import (
 	"context"
 	"log"
-	"strconv"
+	"runtime/debug"
 	"strings"
 	"time"
 
 	tgbotapi "github.com/mymmrac/telego"
-	"github.com/mymmrac/telego/telegoutil"
 )
 
 type VBBot struct {
@@ -65,26 +64,50 @@ func main() {
 func (vbbot *VBBot) Start(ch <-chan tgbotapi.Update) {
 	for {
 		select {
-		case update := <-ch:
-			if update.Message != nil {
-				if !IsCommand(update.Message) {
-					vbbot.handleUpdate(update)
-				}
-			} else if update.CallbackQuery != nil {
-				vbbot.handleCallbackQuery(update.CallbackQuery)
+		case update, ok := <-ch:
+			if !ok {
+				// Накопленные медиагруппы при выходе не отправляются:
+				// это отдельный пункт TODO про graceful shutdown.
+				log.Println("канал обновлений закрыт")
+				return
 			}
+			vbbot.dispatch(update)
 		case <-vbbot.ticker.C:
-			for k, v := range vbbot.mediamsg {
-				if v.state == MessageStateInit {
-					v.state = MessageStateToBeSent
-				} else if v.state == MessageStateToBeSent {
-					vbbot.sendMediaGroup(v)
-					v.state = MessageStateToDelete
-				} else if v.state == MessageStateToDelete {
-					delete(vbbot.mediamsg, k)
-				}
-			}
+			vbbot.tick()
 		}
+	}
+}
+
+// tick — один шаг тикера: переводит каждую накопленную медиагруппу
+// по состояниям Init → ToBeSent → (отправка) → ToDelete → удаление.
+// Вызывается только из цикла событий Start (и из тестов).
+func (vbbot *VBBot) tick() {
+	for k, v := range vbbot.mediamsg {
+		if v.state == MessageStateInit {
+			v.state = MessageStateToBeSent
+		} else if v.state == MessageStateToBeSent {
+			vbbot.sendMediaGroup(v)
+			v.state = MessageStateToDelete
+		} else if v.state == MessageStateToDelete {
+			delete(vbbot.mediamsg, k)
+		}
+	}
+}
+
+// dispatch обрабатывает одно обновление. Паника внутри обработчика
+// логируется вместе со стеком и не останавливает цикл событий.
+func (vbbot *VBBot) dispatch(update tgbotapi.Update) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("паника при обработке обновления %d: %v\n%s", update.UpdateID, r, debug.Stack())
+		}
+	}()
+	if update.Message != nil {
+		if !IsCommand(update.Message) {
+			vbbot.handleUpdate(update)
+		}
+	} else if update.CallbackQuery != nil {
+		vbbot.handleCallbackQuery(update.CallbackQuery)
 	}
 }
 
@@ -101,16 +124,11 @@ func (vbbot *VBBot) confirmNewAd(chatId int64, replyToId int, sentMsg tgbotapi.M
 		},
 	}
 
-	buttonMsg.ReplyMarkup = &tgbotapi.InlineKeyboardMarkup{
-		InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
-			{
-				tgbotapi.InlineKeyboardButton{
-					Text:         "Не актуально",
-					CallbackData: "delete_" + strconv.Itoa(int(sentMsg.Chat.ID)) + "_" + strconv.Itoa(sentMsg.MessageID),
-				},
-			},
-		},
-	}
+	buttonMsg.ReplyMarkup = toggleKeyboard(callbackData{
+		action:    actionDelete,
+		chatID:    sentMsg.Chat.ID,
+		messageID: sentMsg.MessageID,
+	})
 	if err := vbbot.sendMessage(&buttonMsg); err != nil {
 		vbbot.handleError(err, chatId)
 	}
@@ -120,7 +138,14 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 	if update.Message.Chat.ID < 0 {
 		return
 	}
-	if !vbbot.authByChannel(update) {
+	subscribed, err := vbbot.authByChannel(update)
+	if err != nil {
+		// Сырой текст ошибки API пользователю не показывается.
+		log.Printf("проверка подписки пользователя %d: %v", update.Message.From.ID, err)
+		vbbot.sendTextMessage(AuthCheckFailedMessage, update.Message.Chat.ID)
+		return
+	}
+	if !subscribed {
 		vbbot.sendTextMessage(NotSubscribedMessage, update.Message.Chat.ID)
 		return
 	}
@@ -130,229 +155,17 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 	}
 	if update.Message.Photo != nil {
 		if update.Message.MediaGroupID != "" {
-			if _, ok := vbbot.mediamsg[update.Message.MediaGroupID]; !ok {
-				vbbot.mediamsg[update.Message.MediaGroupID] = &MediaMessage{
-					fileid:            []string{},
-					username:          update.Message.From.Username,
-					fullname:          update.Message.From.FirstName + " " + update.Message.From.LastName,
-					userid:            update.Message.From.ID,
-					state:             MessageStateInit,
-					entities:          update.Message.CaptionEntities,
-					originalmessageid: update.Message.MessageID,
-				}
+			mm, ok := vbbot.mediamsg[update.Message.MediaGroupID]
+			if !ok {
+				mm = newMediaMessage(update.Message)
+				vbbot.mediamsg[update.Message.MediaGroupID] = mm
 				vbbot.sendTextMessage(MediaGroupDelayMessage, update.Message.Chat.ID)
 			}
-			vbbot.mediamsg[update.Message.MediaGroupID].fileid =
-				append(vbbot.mediamsg[update.Message.MediaGroupID].fileid,
-					update.Message.Photo[len(update.Message.Photo)-1].FileID)
-			if update.Message.Caption != "" {
-				vbbot.mediamsg[update.Message.MediaGroupID].caption = update.Message.Caption
-			}
+			mm.addItem(update.Message)
 		} else {
 			vbbot.sendPhotoMessage(update)
 		}
 	} else {
 		vbbot.sendPlainMessage(update)
 	}
-}
-
-func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
-	parts := strings.Split(query.Data, "_")
-	if len(parts) != 3 {
-		return
-	}
-
-	if parts[0] == "delete" {
-		vbbot.handleMarkAsDeprecated(query)
-	} else if parts[0] == "restore" {
-		vbbot.handleRestore(query)
-	}
-}
-
-func (vbbot *VBBot) handleRestore(query *tgbotapi.CallbackQuery) {
-	parts := strings.Split(query.Data, "_")
-	if len(parts) != 3 || parts[0] != "restore" {
-		return
-	}
-
-	chatID, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		vbbot.handleCallbackError(query, "Invalid chat ID")
-		return
-	}
-
-	messageID, err := strconv.Atoi(parts[2])
-	if err != nil {
-		vbbot.handleCallbackError(query, "Invalid message ID")
-		return
-	}
-	var msg *tgbotapi.Message
-	if query.Message.IsAccessible() {
-		msg = query.Message.(*tgbotapi.Message)
-	} else {
-		vbbot.handleCallbackError(query, "Message is not accessible")
-	}
-
-	if len(msg.ReplyToMessage.Caption) == 0 {
-		text, ents := telegoutil.MessageEntities(
-			telegoutil.Entity(msg.ReplyToMessage.Text),
-			telegoutil.Entity("\n\n by: "),
-			telegoutil.Entity(msg.ReplyToMessage.From.FirstName+" "+msg.ReplyToMessage.From.LastName).TextMentionWithID(msg.ReplyToMessage.From.ID))
-		ents = append(ents, msg.ReplyToMessage.Entities...)
-		edMsg := tgbotapi.EditMessageTextParams{
-			ChatID:    tgbotapi.ChatID{ID: chatID},
-			MessageID: messageID,
-			Text:      text,
-			Entities:  ents,
-		}
-		_, err := vbbot.tgbot.EditMessageText(context.Background(), &edMsg)
-		if err != nil {
-			vbbot.handleError(err, msg.Chat.ID)
-			return
-		}
-	} else {
-		text, ents := telegoutil.MessageEntities(
-			telegoutil.Entity(msg.ReplyToMessage.Caption),
-			telegoutil.Entity("\n\n by: "),
-			telegoutil.Entity(msg.ReplyToMessage.From.FirstName+" "+msg.ReplyToMessage.From.LastName).TextMentionWithID(msg.ReplyToMessage.From.ID))
-		ents = append(ents, msg.ReplyToMessage.CaptionEntities...)
-		edMsg := tgbotapi.EditMessageCaptionParams{
-			ChatID:          tgbotapi.ChatID{ID: chatID},
-			MessageID:       messageID,
-			Caption:         text,
-			CaptionEntities: ents,
-		}
-		_, err := vbbot.tgbot.EditMessageCaption(context.Background(), &edMsg)
-		if err != nil {
-			vbbot.handleError(err, msg.Chat.ID)
-			return
-		}
-	}
-
-	callback := tgbotapi.AnswerCallbackQueryParams{
-		CallbackQueryID: query.ID,
-		Text:            "Объявление восстановлено",
-	}
-	vbbot.tgbot.AnswerCallbackQuery(context.Background(), &callback)
-
-	btnDelete := tgbotapi.EditMessageTextParams{
-		ChatID:    tgbotapi.ChatID{ID: query.Message.GetChat().ID},
-		MessageID: query.Message.GetMessageID(),
-		Text:      "Объявление восстановлено",
-		ReplyMarkup: &tgbotapi.InlineKeyboardMarkup{
-			InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
-				{
-					tgbotapi.InlineKeyboardButton{
-						Text:         "Не актуально",
-						CallbackData: "delete_" + strconv.Itoa(int(chatID)) + "_" + strconv.Itoa(messageID),
-					},
-				},
-			},
-		},
-	}
-	_, err = vbbot.tgbot.EditMessageText(context.Background(), &btnDelete)
-	if err != nil {
-		vbbot.handleError(err, msg.Chat.ID)
-		return
-	}
-
-}
-
-func (vbbot *VBBot) handleMarkAsDeprecated(query *tgbotapi.CallbackQuery) {
-	parts := strings.Split(query.Data, "_")
-	if len(parts) != 3 || parts[0] != "delete" {
-		return
-	}
-
-	chatID, err := strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		vbbot.handleCallbackError(query, "Invalid chat ID")
-		return
-	}
-
-	messageID, err := strconv.Atoi(parts[2])
-	if err != nil {
-		vbbot.handleCallbackError(query, "Invalid message ID")
-		return
-	}
-	var msg *tgbotapi.Message
-	if query.Message.IsAccessible() {
-		msg = query.Message.(*tgbotapi.Message)
-	} else {
-		vbbot.handleCallbackError(query, "Message is not accessible")
-	}
-
-	if len(msg.ReplyToMessage.Caption) == 0 {
-		text, ents := telegoutil.MessageEntities(
-			telegoutil.Entity("Не актуально.\n\n"),
-			telegoutil.Entity(msg.ReplyToMessage.Text).Strikethrough(),
-			telegoutil.Entity("\n\n by: ").Strikethrough(),
-			telegoutil.Entity(msg.ReplyToMessage.From.FirstName+" "+msg.ReplyToMessage.From.LastName).TextMentionWithID(msg.ReplyToMessage.From.ID).Strikethrough())
-		ents = append(ents, msg.ReplyToMessage.Entities...)
-		edMsg := tgbotapi.EditMessageTextParams{
-			ChatID:    tgbotapi.ChatID{ID: chatID},
-			MessageID: messageID,
-			Text:      text,
-			Entities:  ents,
-		}
-		_, err := vbbot.tgbot.EditMessageText(context.Background(), &edMsg)
-		if err != nil {
-			vbbot.handleError(err, msg.Chat.ID)
-			return
-		}
-
-	} else {
-		text, ents := telegoutil.MessageEntities(
-			telegoutil.Entity("Не актуально.\n\n"),
-			telegoutil.Entity(msg.ReplyToMessage.Caption).Strikethrough(),
-			telegoutil.Entity("\n\n by: ").Strikethrough(),
-			telegoutil.Entity(msg.ReplyToMessage.From.FirstName+" "+msg.ReplyToMessage.From.LastName).TextMentionWithID(msg.ReplyToMessage.From.ID).Strikethrough())
-		ents = append(ents, msg.ReplyToMessage.CaptionEntities...)
-		edMsg := tgbotapi.EditMessageCaptionParams{
-			ChatID:          tgbotapi.ChatID{ID: chatID},
-			MessageID:       messageID,
-			Caption:         text,
-			CaptionEntities: ents,
-		}
-		_, err := vbbot.tgbot.EditMessageCaption(context.Background(), &edMsg)
-		if err != nil {
-			vbbot.handleError(err, msg.Chat.ID)
-			return
-		}
-	}
-
-	callback := tgbotapi.AnswerCallbackQueryParams{
-		CallbackQueryID: query.ID,
-		Text:            "Объявление помечено как неактуальное",
-	}
-	vbbot.tgbot.AnswerCallbackQuery(context.Background(), &callback)
-
-	btnDelete := tgbotapi.EditMessageTextParams{
-		ChatID:    tgbotapi.ChatID{ID: query.Message.GetChat().ID},
-		MessageID: query.Message.GetMessageID(),
-		Text:      "Объявление помечено как неактуальное",
-		ReplyMarkup: &tgbotapi.InlineKeyboardMarkup{
-			InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
-				{
-					tgbotapi.InlineKeyboardButton{
-						Text:         "Восстановить",
-						CallbackData: "restore_" + strconv.Itoa(int(chatID)) + "_" + strconv.Itoa(messageID),
-					},
-				},
-			},
-		},
-	}
-	_, err = vbbot.tgbot.EditMessageText(context.Background(), &btnDelete)
-	if err != nil {
-		vbbot.handleError(err, msg.Chat.ID)
-		return
-	}
-}
-
-func (vbbot *VBBot) handleCallbackError(query *tgbotapi.CallbackQuery, message string) {
-	callback := tgbotapi.AnswerCallbackQueryParams{
-		CallbackQueryID: query.ID,
-		Text:            message,
-	}
-	vbbot.tgbot.AnswerCallbackQuery(context.Background(), &callback)
 }

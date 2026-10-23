@@ -6,7 +6,6 @@ import (
 	"log"
 
 	tgbotapi "github.com/mymmrac/telego"
-	"github.com/mymmrac/telego/telegoutil"
 )
 
 func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
@@ -15,12 +14,13 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 		return
 	}
 
-	text, entities := telegoutil.MessageEntities(
-		telegoutil.Entity(mm.caption),
-		telegoutil.Entity("\n\n by: "),
-		telegoutil.Entity(mm.fullname).TextMentionWithID(mm.userid),
-	)
-	entities = append(entities, mm.entities...)
+	text, entities := buildPost(postSource{
+		text:       mm.caption,
+		entities:   mm.entities,
+		authorID:   mm.userid,
+		authorName: mm.fullname,
+		media:      true,
+	}, false)
 	mgc := tgbotapi.SendMediaGroupParams{
 		ChatID: tgbotapi.ChatID{ID: vbbot.channelId},
 		Media:  make([]tgbotapi.InputMedia, 0),
@@ -59,12 +59,13 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	// Получение фотографии с наибольшим размером
 	photo := (update.Message.Photo)[len(update.Message.Photo)-1]
 
-	text, ents := telegoutil.MessageEntities(
-		telegoutil.Entity(update.Message.Caption),
-		telegoutil.Entity("\n\n by: "),
-		telegoutil.Entity(update.Message.From.FirstName+" "+update.Message.From.LastName).TextMentionWithID(update.Message.From.ID),
-	)
-	ents = append(ents, update.Message.CaptionEntities...)
+	text, ents := buildPost(postSource{
+		text:       update.Message.Caption,
+		entities:   update.Message.CaptionEntities,
+		authorID:   update.Message.From.ID,
+		authorName: displayName(*update.Message.From),
+		media:      true,
+	}, false)
 	msg := tgbotapi.SendMediaGroupParams{
 		ChatID: tgbotapi.ChatID{ID: vbbot.channelId},
 		Media: []tgbotapi.InputMedia{
@@ -93,12 +94,17 @@ func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
 		vbbot.sayNoEmptyMessage(update.Message.Chat.ID)
 		return
 	}
-	emsg := telegoutil.MessageWithEntities(tgbotapi.ChatID{ID: vbbot.channelId},
-		telegoutil.Entity(update.Message.Text).Bold(),
-		telegoutil.Entity("\n\n by: "),
-		telegoutil.Entity(update.Message.From.FirstName+" "+update.Message.From.LastName).TextMentionWithID(update.Message.From.ID),
-	)
-	emsg.Entities = append(emsg.Entities, update.Message.Entities...)
+	text, ents := buildPost(postSource{
+		text:       update.Message.Text,
+		entities:   update.Message.Entities,
+		authorID:   update.Message.From.ID,
+		authorName: displayName(*update.Message.From),
+	}, false)
+	emsg := &tgbotapi.SendMessageParams{
+		ChatID:   tgbotapi.ChatID{ID: vbbot.channelId},
+		Text:     text,
+		Entities: ents,
+	}
 	sentMsg, err := vbbot.tgbot.SendMessage(context.Background(), emsg)
 	if err != nil {
 		vbbot.handleError(err, update.Message.Chat.ID)
