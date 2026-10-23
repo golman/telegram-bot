@@ -44,6 +44,24 @@ func buildPost(src postSource, deprecated bool) (string, []tgbotapi.MessageEntit
 	return text, entities
 }
 
+// Лимиты Telegram на длину текста сообщения и подписи медиа (в UTF-16).
+const (
+	maxTextLen    = 4096
+	maxCaptionLen = 1024
+)
+
+// postTextLimit возвращает максимальную длину текста автора (в UTF-16),
+// при которой пост укладывается в лимит Telegram. Считается по самому длинному
+// виду поста — с пометкой «Не актуально», иначе кнопка не смогла бы его изменить.
+func postTextLimit(src postSource) int {
+	limit := maxTextLen
+	if src.media {
+		limit = maxCaptionLen
+	}
+	text, _ := buildPost(src, true)
+	return limit - (telegoutil.UTF16TextLen(text) - telegoutil.UTF16TextLen(src.text))
+}
+
 // displayName возвращает имя пользователя для приписки «by:», без висящего пробела.
 func displayName(u tgbotapi.User) string {
 	return strings.TrimSpace(u.FirstName + " " + u.LastName)

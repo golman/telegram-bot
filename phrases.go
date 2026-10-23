@@ -1,5 +1,7 @@
 package main
 
+import "fmt"
+
 const (
 	MediaGroupDelayMessage = "Сообщение будет отправлено в канал через 10 секунд"
 	// AlbumItemLateMessage отправляется, если фото альбома пришли после его публикации.
@@ -8,7 +10,10 @@ const (
 	// AuthCheckFailedMessage отправляется, если Telegram не ответил на проверку подписки.
 	AuthCheckFailedMessage = "Не удалось проверить подписку на канал. Попробуйте позже"
 	FiltersFailedMessage   = "Сообщение не прошло фильтры и не будет отправлено в канал"
-	DocumentsNotAllowed    = "Документы не принимаются"
+	// PostTooLongMessage — шаблон: на сколько сократить текст и слово «символ»
+	// в нужной форме (см. postTooLongText).
+	PostTooLongMessage  = "Объявление слишком длинное: сократите текст примерно на %d %s и отправьте заново"
+	DocumentsNotAllowed = "Документы не принимаются"
 
 	// DeprecatedPrefix ставится перед зачёркнутым текстом неактуального объявления.
 	DeprecatedPrefix = "Не актуально.\n\n"
@@ -29,4 +34,19 @@ const (
 
 func (vbbot *VBBot) sayNoEmptyMessage(chatId int64) {
 	vbbot.sendTextMessage("Сообщение не может быть пустым", chatId)
+}
+
+// postTooLongText возвращает PostTooLongMessage для превышения на over символов,
+// со словом «символ» в форме, согласованной с числом.
+func postTooLongText(over int) string {
+	word := "символов"
+	if n := over % 100; n < 11 || n > 14 {
+		switch over % 10 {
+		case 1:
+			word = "символ"
+		case 2, 3, 4:
+			word = "символа"
+		}
+	}
+	return fmt.Sprintf(PostTooLongMessage, over, word)
 }

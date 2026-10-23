@@ -7,6 +7,7 @@ import (
 	"log"
 
 	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego/telegoutil"
 )
 
 // errEmptyMediaGroupResponse — Bot API ответил на sendMediaGroup без сообщений,
@@ -19,13 +20,17 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 		return
 	}
 
-	text, entities := buildPost(postSource{
+	src := postSource{
 		text:       mm.caption,
 		entities:   mm.entities,
 		authorID:   mm.userid,
 		authorName: mm.fullname,
 		media:      true,
-	}, false)
+	}
+	if vbbot.rejectTooLong(src, mm.userid, mm.originalmessageid) {
+		return
+	}
+	text, entities := buildPost(src, false)
 	mgc := tgbotapi.SendMediaGroupParams{
 		ChatID: tgbotapi.ChatID{ID: vbbot.channelId},
 		Media:  make([]tgbotapi.InputMedia, 0),
@@ -67,13 +72,17 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	// Получение фотографии с наибольшим размером
 	photo := (update.Message.Photo)[len(update.Message.Photo)-1]
 
-	text, ents := buildPost(postSource{
+	src := postSource{
 		text:       update.Message.Caption,
 		entities:   update.Message.CaptionEntities,
 		authorID:   update.Message.From.ID,
 		authorName: displayName(*update.Message.From),
 		media:      true,
-	}, false)
+	}
+	if vbbot.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {
+		return
+	}
+	text, ents := buildPost(src, false)
 	msg := tgbotapi.SendMediaGroupParams{
 		ChatID: tgbotapi.ChatID{ID: vbbot.channelId},
 		Media: []tgbotapi.InputMedia{
@@ -105,12 +114,16 @@ func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
 		vbbot.sayNoEmptyMessage(update.Message.Chat.ID)
 		return
 	}
-	text, ents := buildPost(postSource{
+	src := postSource{
 		text:       update.Message.Text,
 		entities:   update.Message.Entities,
 		authorID:   update.Message.From.ID,
 		authorName: displayName(*update.Message.From),
-	}, false)
+	}
+	if vbbot.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {
+		return
+	}
+	text, ents := buildPost(src, false)
 	emsg := &tgbotapi.SendMessageParams{
 		ChatID:   tgbotapi.ChatID{ID: vbbot.channelId},
 		Text:     text,
@@ -122,6 +135,27 @@ func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
 	} else {
 		vbbot.confirmNewAd(update.Message.From.ID, update.Message.MessageID, *sentMsg)
 	}
+}
+
+// rejectTooLong проверяет, уместится ли пост из src в лимит Telegram.
+// Если нет, отвечает автору в чате chatID на его сообщение replyTo
+// и возвращает true. Такой пост не отправляется.
+func (vbbot *VBBot) rejectTooLong(src postSource, chatID int64, replyTo int) bool {
+	n, limit := telegoutil.UTF16TextLen(src.text), postTextLimit(src)
+	if n <= limit {
+		return false
+	}
+	log.Printf("объявление пользователя %d слишком длинное: %d при максимуме %d", src.authorID, n, limit)
+	msg := tgbotapi.SendMessageParams{
+		ChatID: tgbotapi.ChatID{ID: chatID},
+		Text:   postTooLongText(n - limit),
+		// Предупреждение уйдёт, даже если автор уже удалил исходное сообщение.
+		ReplyParameters: &tgbotapi.ReplyParameters{MessageID: replyTo, AllowSendingWithoutReply: true},
+	}
+	if err := vbbot.sendMessage(&msg); err != nil {
+		vbbot.handleError(err, chatID)
+	}
+	return true
 }
 
 func (vbbot *VBBot) sendTextMessage(txtMsg string, chatId int64) {

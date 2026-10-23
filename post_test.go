@@ -2,9 +2,11 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego/telegoutil"
 )
 
 func TestBuildPost(t *testing.T) {
@@ -198,6 +200,36 @@ func TestPostSourceFromMessage(t *testing.T) {
 				if src.entities[i] != tt.wantEntities[i] {
 					t.Errorf("entities[%d] = %+v, ожидалось %+v", i, src.entities[i], tt.wantEntities[i])
 				}
+			}
+		})
+	}
+}
+
+// TestPostTextLimit: текст автора длиной ровно postTextLimit даёт пост,
+// который и после пометки «Не актуально» точно укладывается в лимит Telegram.
+func TestPostTextLimit(t *testing.T) {
+	tests := []struct {
+		name  string
+		media bool
+		limit int
+	}{
+		{"текст", false, maxTextLen},
+		{"подпись медиа", true, maxCaptionLen},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			src := postSource{authorID: 42, authorName: "Иван 🚲", media: tt.media}
+			n := postTextLimit(src)
+			// Эмодзи — 2 UTF-16 units, поэтому длина считается не в рунах.
+			src.text = strings.Repeat("🚲", n/2) + strings.Repeat("я", n%2)
+
+			deprecated, _ := buildPost(src, true)
+			if got := telegoutil.UTF16TextLen(deprecated); got != tt.limit {
+				t.Errorf("длина поста «Не актуально» = %d, ожидалась ровно %d", got, tt.limit)
+			}
+			published, _ := buildPost(src, false)
+			if got := telegoutil.UTF16TextLen(published); got > tt.limit {
+				t.Errorf("длина опубликованного поста = %d, больше лимита %d", got, tt.limit)
 			}
 		})
 	}
