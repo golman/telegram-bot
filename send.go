@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log"
 
 	tgbotapi "github.com/mymmrac/telego"
@@ -56,7 +55,7 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 		err = errEmptyMediaGroupResponse
 	}
 	if err != nil {
-		vbbot.handleError(err, mm.userid)
+		vbbot.reportPublishError(err, mm.userid)
 	} else {
 		vbbot.confirmNewAd(mm.userid, mm.originalmessageid, sentMsg[0])
 	}
@@ -103,7 +102,7 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 		err = errEmptyMediaGroupResponse
 	}
 	if err != nil {
-		vbbot.handleError(err, update.Message.Chat.ID)
+		vbbot.reportPublishError(err, update.Message.Chat.ID)
 	} else {
 		vbbot.confirmNewAd(update.Message.From.ID, update.Message.MessageID, sentMsg[0])
 	}
@@ -131,7 +130,7 @@ func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
 	}
 	sentMsg, err := vbbot.tgbot.SendMessage(context.Background(), emsg)
 	if err != nil {
-		vbbot.handleError(err, update.Message.Chat.ID)
+		vbbot.reportPublishError(err, update.Message.Chat.ID)
 	} else {
 		vbbot.confirmNewAd(update.Message.From.ID, update.Message.MessageID, *sentMsg)
 	}
@@ -153,7 +152,7 @@ func (vbbot *VBBot) rejectTooLong(src postSource, chatID int64, replyTo int) boo
 		ReplyParameters: &tgbotapi.ReplyParameters{MessageID: replyTo, AllowSendingWithoutReply: true},
 	}
 	if err := vbbot.sendMessage(&msg); err != nil {
-		vbbot.handleError(err, chatID)
+		log.Printf("не удалось отправить сообщение в чат %d: %v", chatID, err)
 	}
 	return true
 }
@@ -163,9 +162,9 @@ func (vbbot *VBBot) sendTextMessage(txtMsg string, chatId int64) {
 		ChatID: tgbotapi.ChatID{ID: chatId},
 		Text:   txtMsg,
 	}
-	err := vbbot.sendMessage(&botMsg)
-	if err != nil {
-		vbbot.handleError(err, chatId)
+	if err := vbbot.sendMessage(&botMsg); err != nil {
+		// Второе сообщение в тот же чат, скорее всего, тоже не дойдёт.
+		log.Printf("не удалось отправить сообщение в чат %d: %v", chatId, err)
 	}
 }
 
@@ -174,15 +173,9 @@ func (vbbot *VBBot) sendMessage(msg *tgbotapi.SendMessageParams) error {
 	return err
 }
 
-func (vbbot *VBBot) handleError(msgErr error, chatId int64) {
-	log.Println(msgErr)
-	errmsg := fmt.Sprintf("Не удалось отправить сообщение. %s", msgErr.Error())
-	botMsg := tgbotapi.SendMessageParams{
-		ChatID: tgbotapi.ChatID{ID: chatId},
-		Text:   errmsg,
-	}
-	_, err := vbbot.tgbot.SendMessage(context.Background(), &botMsg)
-	if err != nil {
-		log.Println(err)
-	}
+// reportPublishError логирует ошибку публикации объявления и сообщает автору
+// в чат chatID понятный текст. Сырой текст ошибки API автору не показывается.
+func (vbbot *VBBot) reportPublishError(err error, chatID int64) {
+	log.Printf("не удалось опубликовать объявление из чата %d: %v", chatID, err)
+	vbbot.sendTextMessage(PublishFailedMessage, chatID)
 }

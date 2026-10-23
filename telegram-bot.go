@@ -12,6 +12,7 @@ import (
 	"time"
 
 	tgbotapi "github.com/mymmrac/telego"
+	ta "github.com/mymmrac/telego/telegoapi"
 )
 
 type VBBot struct {
@@ -40,7 +41,8 @@ func main() {
 		log.Fatal("CHANNEL_ID is not set or invalid")
 	}
 
-	bot, err := tgbotapi.NewBot(botToken, tgbotapi.WithDefaultDebugLogger())
+	bot, err := tgbotapi.NewBot(botToken, tgbotapi.WithDefaultDebugLogger(),
+		tgbotapi.WithAPICaller(newRateLimitCaller(ta.DefaultFastHTTPCaller)))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -184,7 +186,7 @@ func IsCommand(msg *tgbotapi.Message) bool {
 func (vbbot *VBBot) confirmNewAd(chatId int64, replyToId int, sentMsg tgbotapi.Message) {
 	buttonMsg := tgbotapi.SendMessageParams{
 		ChatID: tgbotapi.ChatID{ID: chatId},
-		Text:   "Объявление опубликовано.\nНажми на кнопку чтобы отметить как неактуальное.",
+		Text:   AdPublishedMessage,
 		ReplyParameters: &tgbotapi.ReplyParameters{
 			MessageID: replyToId,
 		},
@@ -196,7 +198,8 @@ func (vbbot *VBBot) confirmNewAd(chatId int64, replyToId int, sentMsg tgbotapi.M
 		messageID: sentMsg.MessageID,
 	})
 	if err := vbbot.sendMessage(&buttonMsg); err != nil {
-		vbbot.handleError(err, chatId)
+		log.Printf("не удалось отправить подтверждение в чат %d: %v", chatId, err)
+		vbbot.sendTextMessage(ConfirmFailedMessage, chatId)
 	}
 }
 

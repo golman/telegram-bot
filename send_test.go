@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -163,5 +164,82 @@ func TestPostTooLongText(t *testing.T) {
 		if got := postTooLongText(tt.over); got != want {
 			t.Errorf("postTooLongText(%d) = %q, ожидалось %q", tt.over, got, want)
 		}
+	}
+}
+
+// TestPublishErrorHidesAPIText: при ошибке публикации автор получает понятный
+// текст, а описание ошибки Telegram попадает только в лог.
+func TestPublishErrorHidesAPIText(t *testing.T) {
+	const apiDesc = "Bad Request: chat not found"
+	author := &tgbotapi.User{ID: testAlbumAuthorID, FirstName: "Иван"}
+	chat := tgbotapi.Chat{ID: testAlbumAuthorID, Type: "private"}
+	tests := []struct {
+		name   string
+		method string
+		send   func(b *VBBot)
+		// wantTexts — тексты всех sendMessage автору по порядку.
+		wantTexts []string
+	}{
+		{
+			name: "текст", method: "sendMessage",
+			send: func(b *VBBot) {
+				b.sendPlainMessage(tgbotapi.Update{Message: &tgbotapi.Message{MessageID: 100, Date: 1, From: author, Chat: chat, Text: "Продам"}})
+			},
+			wantTexts: []string{PublishFailedMessage},
+		},
+		{
+			name: "одно фото", method: "sendMediaGroup",
+			send: func(b *VBBot) {
+				b.sendPhotoMessage(tgbotapi.Update{Message: &tgbotapi.Message{MessageID: 100, Date: 1, From: author, Chat: chat,
+					Caption: "Продам", Photo: []tgbotapi.PhotoSize{{FileID: "p1"}}}})
+			},
+			wantTexts: []string{PublishFailedMessage},
+		},
+		{
+			name: "альбом", method: "sendMediaGroup",
+			send:      func(b *VBBot) { b.sendMediaGroup(pendingAlbum(MessageStateToBeSent)) },
+			wantTexts: []string{PublishFailedMessage},
+		},
+		{
+			// Пост опубликован, но подтверждение с кнопкой не ушло.
+			name: "подтверждение", method: "sendMessage",
+			send: func(b *VBBot) {
+				b.confirmNewAd(testAlbumAuthorID, 100, tgbotapi.Message{MessageID: 900, Chat: tgbotapi.Chat{ID: testChannelID}})
+			},
+			wantTexts: []string{AdPublishedMessage, ConfirmFailedMessage},
+		},
+		{
+			// Служебное сообщение автору не ушло: второе сообщение тоже не дойдёт,
+			// поэтому ошибка только логируется.
+			name: "служебное сообщение", method: "sendMessage",
+			send:      func(b *VBBot) { b.sendTextMessage(NotSubscribedMessage, testAlbumAuthorID) },
+			wantTexts: []string{NotSubscribedMessage},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := captureLog(t)
+			b, f := newTestBot(t, map[string]string{tt.method: apiDesc})
+
+			tt.send(b)
+
+			var texts []string
+			for _, c := range f.byMethod("sendMessage") {
+				if jsonInt(t, c.body, "chat_id") == testAlbumAuthorID {
+					texts = append(texts, jsonString(t, c.body, "text"))
+				}
+			}
+			if !reflect.DeepEqual(texts, tt.wantTexts) {
+				t.Errorf("автору ушли сообщения %q, ожидалось %q", texts, tt.wantTexts)
+			}
+			for _, text := range texts {
+				if strings.Contains(text, "chat not found") {
+					t.Errorf("автору ушёл сырой текст ошибки API: %q", text)
+				}
+			}
+			if !strings.Contains(logs.String(), "chat not found") {
+				t.Errorf("в логе нет описания ошибки API:\n%s", logs.String())
+			}
+		})
 	}
 }
