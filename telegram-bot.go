@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
+	"os"
+	"os/signal"
 	"runtime/debug"
 	"strings"
+	"syscall"
 	"time"
 
 	tgbotapi "github.com/mymmrac/telego"
@@ -41,8 +45,15 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// SIGINT/SIGTERM отменяют ctx: telego прекращает long polling и закрывает
+	// канал обновлений, после чего Start дообрабатывает буфер и выходит.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		// Повторный сигнал снова завершает процесс сразу, если остановка зависла.
+		stop()
+	}()
 
 	updates, err := bot.UpdatesViaLongPolling(ctx, nil)
 	if err != nil {
@@ -58,23 +69,48 @@ func main() {
 			authEnabled: getEnvBoolOrDefault("BOT_AUTH_ENABLED", true),
 		},
 	}
-	b.Start(updates)
+	if err := b.Start(ctx, updates); err != nil {
+		stop()
+		log.Fatal(err)
+	}
 }
 
-func (vbbot *VBBot) Start(ch <-chan tgbotapi.Update) {
+// errUpdatesClosed — канал обновлений закрылся без запроса на остановку.
+var errUpdatesClosed = errors.New("канал обновлений закрыт без остановки бота")
+
+// Start обрабатывает обновления до закрытия канала ch. telego закрывает его
+// после отмены ctx, поэтому уже полученные обновления из буфера дочитываются
+// и обрабатываются, а затем публикуются накопленные альбомы.
+// Возвращает nil при остановке через ctx и errUpdatesClosed, если канал
+// закрылся сам.
+func (vbbot *VBBot) Start(ctx context.Context, ch <-chan tgbotapi.Update) error {
+	defer vbbot.ticker.Stop()
 	for {
 		select {
 		case update, ok := <-ch:
 			if !ok {
-				// Накопленные медиагруппы при выходе не отправляются:
-				// это отдельный пункт TODO про graceful shutdown.
-				log.Println("канал обновлений закрыт")
-				return
+				vbbot.flushMediaGroups()
+				if ctx.Err() != nil {
+					log.Println("бот остановлен")
+					return nil
+				}
+				return errUpdatesClosed
 			}
 			vbbot.dispatch(update)
 		case <-vbbot.ticker.C:
 			vbbot.tick()
 		}
+	}
+}
+
+// flushMediaGroups публикует все ещё не отправленные альбомы и очищает накопитель.
+// Вызывается при выходе из Start, когда тикера больше не будет.
+func (vbbot *VBBot) flushMediaGroups() {
+	for k, v := range vbbot.mediamsg {
+		if v.state != MessageStateToDelete {
+			vbbot.sendMediaGroup(v)
+		}
+		delete(vbbot.mediamsg, k)
 	}
 }
 
