@@ -184,3 +184,62 @@ func TestDispatchRecoversFromPanic(t *testing.T) {
 		t.Fatalf("в логе нет паники со стеком:\n%s", out)
 	}
 }
+
+// pendingAlbum — накопленный альбом с подписью в состоянии state.
+func pendingAlbum(state MessageState) *MediaMessage {
+	return &MediaMessage{
+		fileid:   []string{"p1"},
+		fullname: "Иван",
+		userid:   testAlbumAuthorID,
+		caption:  "Продам",
+		state:    state,
+	}
+}
+
+// Источник паники в тестах ниже: у VBBot нет клиента (tgbot == nil),
+// и sendMediaGroup паникует на вызове tgbot.SendMediaGroup. Если этот путь
+// перестанет паниковать, замени источник паники, а не чини recover.
+
+// TestTickRecoversFromAlbumPanic: паника при отправке альбома по тикеру
+// логируется, не роняет процесс и не повторяется на следующих тиках.
+func TestTickRecoversFromAlbumPanic(t *testing.T) {
+	logs := captureLog(t)
+	b := &VBBot{mediamsg: map[string]*MediaMessage{"album": pendingAlbum(MessageStateToBeSent)}}
+
+	b.tick()
+
+	out := logs.String()
+	if !strings.Contains(out, "паника при отправке альбома album") || !strings.Contains(out, "goroutine") {
+		t.Fatalf("в логе нет паники со стеком:\n%s", out)
+	}
+	if got := b.mediamsg["album"].state; got != MessageStateToDelete {
+		t.Fatalf("после паники состояние альбома %d, ожидалось ToDelete (%d)", got, MessageStateToDelete)
+	}
+
+	b.tick()
+	if n := strings.Count(logs.String(), "паника при отправке альбома"); n != 1 {
+		t.Errorf("паника в логе %d раз, отправка не должна повторяться", n)
+	}
+	if len(b.mediamsg) != 0 {
+		t.Errorf("после второго тика осталось медиагрупп: %d", len(b.mediamsg))
+	}
+}
+
+// TestFlushRecoversFromAlbumPanic: паника на одном альбоме при остановке
+// не мешает очистить накопитель и не выходит из flushMediaGroups.
+func TestFlushRecoversFromAlbumPanic(t *testing.T) {
+	logs := captureLog(t)
+	b := &VBBot{mediamsg: map[string]*MediaMessage{
+		"a": pendingAlbum(MessageStateInit),
+		"b": pendingAlbum(MessageStateToBeSent),
+	}}
+
+	b.flushMediaGroups()
+
+	if n := strings.Count(logs.String(), "паника при отправке альбома"); n != 2 {
+		t.Errorf("паника в логе %d раз, ожидалось по одной на каждый альбом:\n%s", n, logs.String())
+	}
+	if len(b.mediamsg) != 0 {
+		t.Errorf("после остановки осталось медиагрупп: %d", len(b.mediamsg))
+	}
+}

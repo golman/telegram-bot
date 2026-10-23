@@ -2,11 +2,16 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 
 	tgbotapi "github.com/mymmrac/telego"
 )
+
+// errEmptyMediaGroupResponse — Bot API ответил на sendMediaGroup без сообщений,
+// и ID поста для кнопки «Не актуально» взять неоткуда.
+var errEmptyMediaGroupResponse = errors.New("пустой ответ на sendMediaGroup")
 
 func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 	if mm.caption == "" {
@@ -42,6 +47,9 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 	}
 
 	sentMsg, err := vbbot.tgbot.SendMediaGroup(context.Background(), &mgc)
+	if err == nil && len(sentMsg) == 0 {
+		err = errEmptyMediaGroupResponse
+	}
 	if err != nil {
 		vbbot.handleError(err, mm.userid)
 	} else {
@@ -82,6 +90,9 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 
 	// Отправка сообщения с фотографией и подписью
 	sentMsg, err := vbbot.tgbot.SendMediaGroup(context.Background(), &msg)
+	if err == nil && len(sentMsg) == 0 {
+		err = errEmptyMediaGroupResponse
+	}
 	if err != nil {
 		vbbot.handleError(err, update.Message.Chat.ID)
 	} else {

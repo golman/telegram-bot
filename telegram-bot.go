@@ -108,10 +108,24 @@ func (vbbot *VBBot) Start(ctx context.Context, ch <-chan tgbotapi.Update) error 
 func (vbbot *VBBot) flushMediaGroups() {
 	for k, v := range vbbot.mediamsg {
 		if v.state != MessageStateToDelete {
-			vbbot.sendMediaGroup(v)
+			vbbot.publishAlbum(k, v)
 		}
 		delete(vbbot.mediamsg, k)
 	}
+}
+
+// publishAlbum отправляет альбом id под recover: паника при отправке
+// логируется вместе со стеком и не останавливает цикл событий. Альбом
+// помечается отправленным до отправки, чтобы после паники она не повторялась
+// на каждом шаге тикера.
+func (vbbot *VBBot) publishAlbum(id string, mm *MediaMessage) {
+	mm.state = MessageStateToDelete
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("паника при отправке альбома %s: %v\n%s", id, r, debug.Stack())
+		}
+	}()
+	vbbot.sendMediaGroup(mm)
 }
 
 // tick — один шаг тикера: переводит каждую накопленную медиагруппу
@@ -122,8 +136,7 @@ func (vbbot *VBBot) tick() {
 		if v.state == MessageStateInit {
 			v.state = MessageStateToBeSent
 		} else if v.state == MessageStateToBeSent {
-			vbbot.sendMediaGroup(v)
-			v.state = MessageStateToDelete
+			vbbot.publishAlbum(k, v)
 		} else if v.state == MessageStateToDelete {
 			delete(vbbot.mediamsg, k)
 		}
