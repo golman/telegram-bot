@@ -209,3 +209,19 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/go,jetbrains+all,visualstudiocode,macos,linux,windows
+
+### Проект ###
+# Бинарник `go build` (имя модуля) и будущее имя после переименования модуля
+/TelegramBot
+/telegram-bot
+
+# Логи бота содержат данные пользователей
+logs/
+
+# Секреты: токен бота и прочие переменные окружения
+.env
+.env.*
+!.env.example
+
+# Локальные настройки Claude Code
+.claude/settings.local.json
