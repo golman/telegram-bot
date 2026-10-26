@@ -162,3 +162,43 @@ func TestAlbumWithUnsupportedItems(t *testing.T) {
 		})
 	}
 }
+
+// TestHandleUpdateOnlyPrivateChats: бот отвечает только в личном чате,
+// определяя его по типу чата, а не по знаку ID. Сообщение без автора
+// отбрасывается без паники и без запросов к API.
+func TestHandleUpdateOnlyPrivateChats(t *testing.T) {
+	tests := []struct {
+		name     string
+		set      func(m *tgbotapi.Message)
+		wantSent bool
+	}{
+		{"личный чат", func(m *tgbotapi.Message) {}, true},
+		{"группа", func(m *tgbotapi.Message) { m.Chat = tgbotapi.Chat{ID: -100, Type: tgbotapi.ChatTypeGroup} }, false},
+		{"супергруппа", func(m *tgbotapi.Message) { m.Chat = tgbotapi.Chat{ID: -1001, Type: tgbotapi.ChatTypeSupergroup} }, false},
+		// Положительный ID ещё не значит личный чат.
+		{"группа с положительным ID", func(m *tgbotapi.Message) { m.Chat.Type = tgbotapi.ChatTypeGroup }, false},
+		{"без автора", func(m *tgbotapi.Message) { m.From = nil }, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			captureLog(t)
+			b, f := newTestBot(t, nil)
+			b.mediamsg = map[string]*MediaMessage{}
+			// Проверка подписки включена: без автора она разыменовала бы nil.
+			b.cfg.authEnabled = true
+			f.respond("getChatMember", `{"status":"member","user":{"id":42,"is_bot":false,"first_name":"Иван"}}`)
+			m := authorMessage(100)
+			m.Text = "Продам"
+			tt.set(m)
+
+			b.handleUpdate(tgbotapi.Update{Message: m})
+
+			if got := channelCalls(t, f, "sendMessage") == 1; got != tt.wantSent {
+				t.Errorf("публикация в канал: %v, ожидалось %v", got, tt.wantSent)
+			}
+			if !tt.wantSent && len(f.allCalls()) != 0 {
+				t.Errorf("запросов к API %d, ожидалось 0: %v", len(f.allCalls()), f.allCalls())
+			}
+		})
+	}
+}

@@ -218,8 +218,14 @@ func (vbbot *VBBot) confirmNewAd(chatId int64, replyToId int, sentMsg tgbotapi.M
 	}
 }
 
+// handleUpdate обрабатывает сообщение автора. Это единственный вход для
+// сообщений, поэтому дальше (authByChannel, send.go) From уже не nil.
 func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
-	if update.Message.Chat.ID < 0 {
+	if update.Message.Chat.Type != tgbotapi.ChatTypePrivate {
+		return
+	}
+	if update.Message.From == nil {
+		log.Printf("сообщение %d в чате %d без автора, пропущено", update.Message.MessageID, update.Message.Chat.ID)
 		return
 	}
 	subscribed, err := vbbot.authByChannel(update)
