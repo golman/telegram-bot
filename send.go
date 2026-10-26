@@ -14,6 +14,11 @@ import (
 var errEmptyMediaGroupResponse = errors.New("пустой ответ на sendMediaGroup")
 
 func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
+	if len(mm.fileid) == 0 {
+		// В альбоме только видео или файлы.
+		vbbot.sendTextMessage(UnsupportedMessage, mm.userid)
+		return
+	}
 	if mm.caption == "" {
 		vbbot.sayNoEmptyMessage(mm.userid)
 		return
@@ -58,6 +63,9 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 		vbbot.reportPublishError(err, mm.userid)
 	} else {
 		vbbot.confirmNewAd(mm.userid, mm.originalmessageid, sentMsg[0])
+		if mm.skipped > 0 {
+			vbbot.sendTextMessage(AlbumSkippedMessage, mm.userid)
+		}
 	}
 
 }

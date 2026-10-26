@@ -15,6 +15,8 @@ type MediaMessage struct {
 	ticksLeft int
 	// lateNotified — автор уже получил AlbumItemLateMessage.
 	lateNotified bool
+	// skipped — сколько элементов альбома не фото (видео, файлы); они не публикуются.
+	skipped int
 }
 
 type MessageState int
@@ -49,12 +51,15 @@ func newMediaMessage(msg *tgbotapi.Message) *MediaMessage {
 
 // addItem добавляет элемент альбома: самый большой размер фото и, если у элемента
 // есть подпись, её текст, entities и ID сообщения, на которое ответит подтверждение.
+// Элемент без фото (видео, файл) только считается в skipped, но его подпись берётся.
 // Подпись может прийти на любом элементе, а не только на первом. Если подписи есть
 // на нескольких элементах, побеждает последняя (вместе с её entities и ID),
 // а подписи остальных элементов не публикуются.
 func (mm *MediaMessage) addItem(msg *tgbotapi.Message) {
 	if len(msg.Photo) > 0 {
 		mm.fileid = append(mm.fileid, msg.Photo[len(msg.Photo)-1].FileID)
+	} else {
+		mm.skipped++
 	}
 	if msg.Caption != "" {
 		mm.caption = msg.Caption

@@ -130,6 +130,22 @@ func (vbbot *VBBot) publishAlbum(id string, mm *MediaMessage) {
 	vbbot.sendMediaGroup(mm)
 }
 
+// addAlbumItem добавляет элемент альбома в накопитель. Первый элемент создаёт
+// накопитель и предупреждает автора о задержке публикации.
+func (vbbot *VBBot) addAlbumItem(msg *tgbotapi.Message) {
+	mm, ok := vbbot.mediamsg[msg.MediaGroupID]
+	if !ok {
+		mm = newMediaMessage(msg)
+		vbbot.mediamsg[msg.MediaGroupID] = mm
+		vbbot.sendTextMessage(MediaGroupDelayMessage, msg.Chat.ID)
+	}
+	if mm.state == MessageStateToDelete {
+		vbbot.rejectLateAlbumItem(mm, msg)
+		return
+	}
+	mm.addItem(msg)
+}
+
 // rejectLateAlbumItem обрабатывает фото альбома, который уже отправлен:
 // добавить его в опубликованный пост нельзя, поэтому автор один раз на альбом
 // получает AlbumItemLateMessage.
@@ -221,22 +237,21 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 		vbbot.sendTextMessage(FiltersFailedMessage, update.Message.Chat.ID)
 		return
 	}
-	if update.Message.Photo != nil {
-		if update.Message.MediaGroupID != "" {
-			mm, ok := vbbot.mediamsg[update.Message.MediaGroupID]
-			if !ok {
-				mm = newMediaMessage(update.Message)
-				vbbot.mediamsg[update.Message.MediaGroupID] = mm
-				vbbot.sendTextMessage(MediaGroupDelayMessage, update.Message.Chat.ID)
-			}
-			if mm.state == MessageStateToDelete {
-				vbbot.rejectLateAlbumItem(mm, update.Message)
-				return
-			}
-			mm.addItem(update.Message)
-		} else {
-			vbbot.sendPhotoMessage(update)
-		}
+	msg := update.Message
+	// Принимаются только текст и фото. Элементы альбома с видео или файлами
+	// собираются вместе с фото, чтобы не потерять подпись, но не публикуются.
+	supported := msg.Photo != nil || msg.Text != ""
+	if msg.MediaGroupID != "" {
+		vbbot.addAlbumItem(msg)
+		return
+	}
+	if !supported {
+		log.Printf("сообщение %d пользователя %d не текст и не фото, отклонено", msg.MessageID, msg.Chat.ID)
+		vbbot.sendTextMessage(UnsupportedMessage, msg.Chat.ID)
+		return
+	}
+	if msg.Photo != nil {
+		vbbot.sendPhotoMessage(update)
 	} else {
 		vbbot.sendPlainMessage(update)
 	}
