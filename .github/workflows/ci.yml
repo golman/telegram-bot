@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Проверка (Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Минимальная версия из go.mod ловит использование более нового Go,
+    # stable — проблемы на актуальной версии и уже исправленные уязвимости
+    # стандартной библиотеки.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - go: из go.mod
+            go-version-file: go.mod
+          - go: stable
+            go-version: stable
+    steps:
+      # Сторонние actions закреплены по SHA коммита: тег можно перевесить.
+      # Dependabot обновляет SHA вместе с комментарием версии.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # В каждой строке матрицы задан только один из двух параметров,
+      # второй пустой и setup-go его не учитывает.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: ${{ matrix.go-version-file }}
+          go-version: ${{ matrix.go-version }}
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "Файлы не отформатированы gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go.mod и go.sum в итоговом виде
+        run: go mod tidy -diff
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Тесты
+        run: go test -race -count=1 -shuffle=on ./...
+
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+      - name: Сборка
+        run: go build ./...

@@ -24,6 +24,8 @@ go test -race ./...       # все тесты
 go test -run TestName .   # один тест
 ```
 
+CI (`.github/workflows/ci.yml`) на каждый push в `master` и PR запускает `gofmt`, `go mod tidy -diff`, `go vet`, `go test -race`, staticcheck, govulncheck и сборку на двух версиях Go: минимальной из `go.mod` и последней стабильной (`stable`). Actions закреплены по SHA; их и Go-модули обновляет Dependabot (`.github/dependabot.yml`, раз в неделю, одной PR на экосистему). Версии staticcheck и govulncheck закреплены в `go run …@vX` прямо в workflow, Dependabot их не видит — обновляй вручную.
+
 ## Конфигурация (переменные окружения)
 
 Читаются через типизированные хелперы в `logging.go` (`getEnvOrDefault`, `getEnvIntOrDefault`, `getEnvInt64OrDefault`, `getEnvBoolOrDefault`). Используй их вместо прямого `os.Getenv`: некорректные значения логируются, и подставляется значение по умолчанию.
