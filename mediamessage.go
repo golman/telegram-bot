@@ -8,7 +8,6 @@ import (
 
 type MediaMessage struct {
 	fileid            []string
-	username          string
 	fullname          string
 	userid            int64
 	caption           string
@@ -59,7 +58,6 @@ func newMediaMessage(msg *tgbotapi.Message) *MediaMessage {
 		originalmessageid: msg.MessageID,
 	}
 	if msg.From != nil {
-		mm.username = msg.From.Username
 		mm.fullname = displayName(*msg.From)
 		mm.userid = msg.From.ID
 	}
