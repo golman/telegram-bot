@@ -31,6 +31,7 @@ go test -run TestName .   # один тест
 - `BOT_TOKEN` (обязательно), `CHANNEL_ID` (обязательно, int64 — целевой канал)
 - `BOT_AUTH_ENABLED` (по умолчанию `true`) — принимать объявления только от участников канала `CHANNEL_ID`
 - `LOG_FILE_PATH` (по умолчанию `logs/telegram-bot.log`), `LOG_MAX_SIZE_MB`, `LOG_MAX_BACKUPS`, `LOG_MAX_AGE_DAYS`, `LOG_COMPRESS` — ротация через lumberjack; логи пишутся и в stdout, и в файл
+- `LOG_LEVEL` (по умолчанию `info`) — `info` или `debug`. Логи telego идут в тот же лог через `telegoLogger` (`logging.go`) с маскировкой токена; на `info` пишутся только его ошибки, на `debug` — ещё запросы и ответы API с текстами объявлений и данными пользователей, поэтому `debug` только для отладки
 
 ## Архитектура
 

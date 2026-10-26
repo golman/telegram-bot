@@ -40,8 +40,8 @@ func main() {
 		log.Fatal("CHANNEL_ID is not set or invalid")
 	}
 
-	bot, err := tgbotapi.NewBot(botToken, tgbotapi.WithDefaultDebugLogger(),
-		tgbotapi.WithAPICaller(newAPICaller()))
+	opts := append(botOptions(botToken, parseLogLevel(getEnvOrDefault("LOG_LEVEL", "info"))), tgbotapi.WithAPICaller(newAPICaller()))
+	bot, err := tgbotapi.NewBot(botToken, opts...)
 	if err != nil {
 		log.Fatal(err)
 	}

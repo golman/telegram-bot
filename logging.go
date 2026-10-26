@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	tgbotapi "github.com/mymmrac/telego"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -106,4 +107,56 @@ func getEnvInt64OrDefault(key string, fallback int64) int64 {
 		return fallback
 	}
 	return value
+}
+
+// telegoLogger направляет логи telego в стандартный log, то есть в stdout
+// и в файл вместе с остальными логами бота. Токен в сообщениях заменяется
+// на BOT_TOKEN. Debug-записи (URL запросов, их тела и ответы API с текстами
+// объявлений и данными пользователей) пишутся только при LOG_LEVEL=debug.
+type telegoLogger struct {
+	debug    bool
+	replacer *strings.Replacer
+}
+
+func newTelegoLogger(token string, debug bool) *telegoLogger {
+	return &telegoLogger{debug: debug, replacer: strings.NewReplacer(token, tgbotapi.DefaultLoggerTokenReplacement)}
+}
+
+func (l *telegoLogger) Debugf(format string, args ...any) {
+	if l.debug {
+		l.print(format, args...)
+	}
+}
+
+func (l *telegoLogger) Errorf(format string, args ...any) {
+	l.print(format, args...)
+}
+
+func (l *telegoLogger) print(format string, args ...any) {
+	log.Print("telego: " + l.replacer.Replace(fmt.Sprintf(format, args...)))
+}
+
+// parseLogLevel разбирает LOG_LEVEL и возвращает true для уровня debug.
+// Поддерживаются info (по умолчанию) и debug; другое значение логируется
+// и заменяется на info.
+func parseLogLevel(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "", "info":
+		return false
+	case "debug":
+		return true
+	default:
+		log.Printf("некорректный LOG_LEVEL=%q, используется info", raw)
+		return false
+	}
+}
+
+// botOptions — настройки логирования клиента telego. В режиме debug telego
+// дополнительно пишет параметры запросов.
+func botOptions(token string, debug bool) []tgbotapi.BotOption {
+	opts := []tgbotapi.BotOption{tgbotapi.WithLogger(newTelegoLogger(token, debug))}
+	if debug {
+		opts = append(opts, tgbotapi.WithDebugMode())
+	}
+	return opts
 }
