@@ -70,8 +70,12 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 
 }
 
+// sendPhotoMessage публикует одиночное фото с подписью. Пост собирается
+// той же postSourceFromMessage, что и при нажатии кнопки, поэтому
+// публикация и пометка «Не актуально» берут текст одинаково.
 func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
-	if update.Message.Caption == "" {
+	src, ok := postSourceFromMessage(update.Message)
+	if !ok {
 		vbbot.sayNoEmptyMessage(update.Message.Chat.ID)
 		return
 	}
@@ -79,13 +83,6 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	// Получение фотографии с наибольшим размером
 	photo := (update.Message.Photo)[len(update.Message.Photo)-1]
 
-	src := postSource{
-		text:       update.Message.Caption,
-		entities:   update.Message.CaptionEntities,
-		authorID:   update.Message.From.ID,
-		authorName: displayName(*update.Message.From),
-		media:      true,
-	}
 	if vbbot.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {
 		return
 	}
@@ -116,16 +113,13 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	}
 }
 
+// sendPlainMessage публикует текстовое объявление; пост собирается
+// postSourceFromMessage, как и в sendPhotoMessage.
 func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
-	if update.Message.Text == "" {
+	src, ok := postSourceFromMessage(update.Message)
+	if !ok {
 		vbbot.sayNoEmptyMessage(update.Message.Chat.ID)
 		return
-	}
-	src := postSource{
-		text:       update.Message.Text,
-		entities:   update.Message.Entities,
-		authorID:   update.Message.From.ID,
-		authorName: displayName(*update.Message.From),
 	}
 	if vbbot.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {
 		return
