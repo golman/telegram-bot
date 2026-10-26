@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"strconv"
 	"strings"
 
 	tgbotapi "github.com/mymmrac/telego"
+	ta "github.com/mymmrac/telego/telegoapi"
 )
 
 // callbackAction — действие inline-кнопки под подтверждением публикации.
@@ -132,7 +134,9 @@ func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 			Entities:  ents,
 		})
 	}
-	if err != nil {
+	// «message is not modified» — пост уже в нужном состоянии (кнопку нажали
+	// повторно или из старого подтверждения), это успех.
+	if err != nil && !isNotModified(err) {
 		log.Printf("редактирование поста %d в канале %d: %v", d.messageID, d.chatID, err)
 		answer = ChannelEditFailedMessage
 		return
@@ -155,7 +159,15 @@ func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 		Text:        answer,
 		ReplyMarkup: toggleKeyboard(next),
 	})
-	if err != nil {
+	if err != nil && !isNotModified(err) {
 		log.Printf("редактирование подтверждения %d в чате %d: %v", msg.MessageID, msg.Chat.ID, err)
 	}
+}
+
+// isNotModified сообщает, что Telegram отклонил правку, потому что сообщение
+// уже выглядит именно так.
+func isNotModified(err error) bool {
+	var apiErr *ta.Error
+	return errors.As(err, &apiErr) && apiErr.ErrorCode == http.StatusBadRequest &&
+		strings.Contains(apiErr.Description, "message is not modified")
 }

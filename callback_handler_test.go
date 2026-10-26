@@ -70,6 +70,9 @@ func checkConfirm(t *testing.T, body map[string]any, wantText, wantButton, wantD
 	}
 }
 
+// notModified — так Telegram отвечает на правку, которая ничего не меняет.
+const notModified = "Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message"
+
 func TestHandleCallbackQuery(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -154,13 +157,30 @@ func TestHandleCallbackQuery(t *testing.T) {
 			wantEdits:  []string{"editMessageText"},
 		},
 		{
-			// Известная проблема из TODO.md («Повторное нажатие кнопки показывает
-			// ошибку»): «message is not modified» пока считается ошибкой. Когда её
-			// начнут распознавать как успех, ожидания этого случая нужно поменять.
 			name: "ошибка правки подписи", data: "delete_-1001234567890_43", msg: confirmMsg(photoReply("cap")),
-			fail:       map[string]string{"editMessageCaption": "Bad Request: message is not modified"},
+			fail:       map[string]string{"editMessageCaption": "Bad Request: message to edit not found"},
 			wantAnswer: ChannelEditFailedMessage,
 			wantEdits:  []string{"editMessageCaption"},
+		},
+		{
+			// Повторное нажатие: пост уже в нужном состоянии, Telegram отвечает
+			// «message is not modified». Это успех: подтверждение всё равно
+			// переключается, автор видит обычный ответ.
+			name: "фото: пост уже помечен", data: "delete_-1001234567890_43", msg: confirmMsg(photoReply("cap")),
+			fail:       map[string]string{"editMessageCaption": notModified},
+			wantAnswer: AdDeprecatedMessage,
+			wantEdits:  []string{"editMessageCaption", "editMessageText"},
+			check: func(t *testing.T, f *fakeAPI) {
+				checkConfirm(t, f.byMethod("editMessageText")[0].body, AdDeprecatedMessage, RestoreButton, "restore_-1001234567890_43")
+			},
+		},
+		{
+			// И пост, и подтверждение уже в нужном состоянии: обе правки
+			// отвечают «message is not modified».
+			name: "текст: всё уже восстановлено", data: "restore_-1001234567890_42", msg: confirmMsg(textReply()),
+			fail:       map[string]string{"editMessageText": notModified},
+			wantAnswer: AdRestoredMessage,
+			wantEdits:  []string{"editMessageText", "editMessageText"},
 		},
 		{
 			name: "ошибка ответа на callback", data: "noop", msg: nil,
