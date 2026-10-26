@@ -129,11 +129,11 @@ func TestAlbumWithUnsupportedItems(t *testing.T) {
 			captureLog(t)
 			b, f := newTestBot(t, nil)
 			b.mediamsg = map[string]*MediaMessage{}
+			clock := useFakeClock(b)
 			for _, m := range tt.items {
 				b.handleUpdate(tgbotapi.Update{Message: m})
 			}
-			b.tick()
-			b.tick()
+			clock.wait(b, albumQuietPeriod)
 
 			groups := f.byMethod("sendMediaGroup")
 			if tt.wantMedia == nil {

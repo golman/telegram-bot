@@ -109,7 +109,7 @@ func TestStartFlushesPendingAlbums(t *testing.T) {
 	}
 	b.mediamsg = map[string]*MediaMessage{
 		"init":    album("p-init", MessageStateInit),
-		"tobe":    album("p-tobe", MessageStateToBeSent),
+		"tobe":    album("p-tobe", MessageStateInit),
 		"already": album("p-already", MessageStateToDelete),
 	}
 	ch := make(chan tgbotapi.Update)
@@ -204,7 +204,8 @@ func pendingAlbum(state MessageState) *MediaMessage {
 // логируется, не роняет процесс и не повторяется на следующих тиках.
 func TestTickRecoversFromAlbumPanic(t *testing.T) {
 	logs := captureLog(t)
-	b := &VBBot{mediamsg: map[string]*MediaMessage{"album": pendingAlbum(MessageStateToBeSent)}}
+	b := &VBBot{mediamsg: map[string]*MediaMessage{"album": pendingAlbum(MessageStateInit)}}
+	clock := useFakeClock(b)
 
 	b.tick()
 
@@ -216,8 +217,8 @@ func TestTickRecoversFromAlbumPanic(t *testing.T) {
 		t.Fatalf("после паники состояние альбома %d, ожидалось ToDelete (%d)", got, MessageStateToDelete)
 	}
 
-	for i := 0; i < albumLateWindowTicks; i++ {
-		b.tick()
+	for elapsed := time.Duration(0); elapsed < albumLateWindow; elapsed += albumTickInterval {
+		clock.wait(b, albumTickInterval)
 	}
 	if n := strings.Count(logs.String(), "паника при отправке альбома"); n != 1 {
 		t.Errorf("паника в логе %d раз, отправка не должна повторяться", n)
@@ -233,7 +234,7 @@ func TestFlushRecoversFromAlbumPanic(t *testing.T) {
 	logs := captureLog(t)
 	b := &VBBot{mediamsg: map[string]*MediaMessage{
 		"a": pendingAlbum(MessageStateInit),
-		"b": pendingAlbum(MessageStateToBeSent),
+		"b": pendingAlbum(MessageStateInit),
 	}}
 
 	b.flushMediaGroups()

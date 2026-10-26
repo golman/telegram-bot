@@ -1,6 +1,10 @@
 package main
 
-import tgbotapi "github.com/mymmrac/telego"
+import (
+	"time"
+
+	tgbotapi "github.com/mymmrac/telego"
+)
 
 type MediaMessage struct {
 	fileid            []string
@@ -11,8 +15,10 @@ type MediaMessage struct {
 	entities          []tgbotapi.MessageEntity
 	state             MessageState
 	originalmessageid int
-	// ticksLeft — сколько шагов тикера альбом в состоянии ToDelete ещё хранится.
-	ticksLeft int
+	// lastItemAt — когда пришёл последний элемент; от него отсчитывается тишина.
+	lastItemAt time.Time
+	// expiresAt — когда удалить отправленный или отклонённый альбом (состояние ToDelete).
+	expiresAt time.Time
 	// lateNotified — автор уже получил AlbumItemLateMessage.
 	lateNotified bool
 	// skipped — сколько элементов альбома не фото (видео, файлы); они не публикуются.
@@ -26,16 +32,23 @@ type MediaMessage struct {
 type MessageState int
 
 const (
+	// MessageStateInit — альбом собирается и ждёт albumQuietPeriod тишины.
 	MessageStateInit MessageState = iota
-	MessageStateToBeSent
-	// MessageStateToDelete — альбом отправлен (или отклонён) и хранится ещё
-	// albumLateWindowTicks шагов тикера, чтобы опоздавшие фото не создали новый альбом.
+	// MessageStateToDelete — альбом отправлен (или отклонён) и хранится до
+	// expiresAt, чтобы опоздавшие фото не создали новый альбом.
 	MessageStateToDelete
 )
 
-// albumLateWindowTicks — сколько шагов тикера (около минуты при шаге 5 секунд)
-// отправленный альбом ждёт опоздавшие фото, прежде чем удалиться.
-const albumLateWindowTicks = 12
+const (
+	// albumQuietPeriod — сколько ждать после последнего фото альбома, прежде чем
+	// отправить его. Telegram присылает фото альбома отдельными обновлениями,
+	// при медленной загрузке — с паузами.
+	albumQuietPeriod = 3 * time.Second
+	// albumLateWindow — сколько отправленный альбом ждёт опоздавшие фото.
+	albumLateWindow = time.Minute
+	// albumTickInterval — шаг тикера, который проверяет альбомы.
+	albumTickInterval = time.Second
+)
 
 // newMediaMessage создаёт накопитель альбома по первому полученному элементу.
 // Фото и подпись сюда не попадают: их добавляет addItem.

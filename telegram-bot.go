@@ -19,6 +19,7 @@ type VBBot struct {
 	channelId int64
 	mediamsg  map[string]*MediaMessage
 	ticker    *time.Ticker
+	now       func() time.Time
 	cfg       VBBotCfg
 }
 
@@ -65,7 +66,7 @@ func main() {
 		tgbot:     bot,
 		channelId: channelID,
 		mediamsg:  map[string]*MediaMessage{},
-		ticker:    time.NewTicker(5 * time.Second),
+		ticker:    time.NewTicker(albumTickInterval),
 		cfg: VBBotCfg{
 			authEnabled: getEnvBoolOrDefault("BOT_AUTH_ENABLED", true),
 		},
@@ -121,7 +122,7 @@ func (vbbot *VBBot) flushMediaGroups() {
 // на каждом шаге тикера.
 func (vbbot *VBBot) publishAlbum(id string, mm *MediaMessage) {
 	mm.state = MessageStateToDelete
-	mm.ticksLeft = albumLateWindowTicks
+	mm.expiresAt = vbbot.clock().Add(albumLateWindow)
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("паника при отправке альбома %s: %v\n%s", id, r, debug.Stack())
@@ -155,7 +156,7 @@ func (vbbot *VBBot) admit(update tgbotapi.Update) bool {
 // addAlbumItem добавляет элемент альбома в накопитель. Подписка и фильтры
 // проверяются один раз, на первом пришедшем элементе: при отказе автор
 // получает одно сообщение, а накопитель помечается отклонённым и молча
-// отбрасывает остальные элементы, пока не истечёт albumLateWindowTicks.
+// отбрасывает остальные элементы, пока не истечёт albumLateWindow.
 // Видео и файлы собираются вместе с фото, чтобы не потерять подпись,
 // но не публикуются. «Будет отправлено» обещается, как только у альбома
 // есть и фото, и подпись.
@@ -168,7 +169,7 @@ func (vbbot *VBBot) addAlbumItem(update tgbotapi.Update) {
 		if !vbbot.admit(update) {
 			mm.rejected = true
 			mm.state = MessageStateToDelete
-			mm.ticksLeft = albumLateWindowTicks
+			mm.expiresAt = vbbot.clock().Add(albumLateWindow)
 			return
 		}
 	}
@@ -180,6 +181,7 @@ func (vbbot *VBBot) addAlbumItem(update tgbotapi.Update) {
 		return
 	}
 	mm.addItem(msg)
+	mm.lastItemAt = vbbot.clock()
 	if !mm.promised && mm.caption != "" && len(mm.fileid) > 0 {
 		mm.promised = true
 		vbbot.sendTextMessage(MediaGroupDelayMessage, msg.Chat.ID)
@@ -198,23 +200,27 @@ func (vbbot *VBBot) rejectLateAlbumItem(mm *MediaMessage, msg *tgbotapi.Message)
 	vbbot.sendTextMessage(AlbumItemLateMessage, msg.Chat.ID)
 }
 
-// tick — один шаг тикера: переводит каждую накопленную медиагруппу
-// по состояниям Init → ToBeSent → (отправка) → ToDelete → (albumLateWindowTicks
-// шагов ожидания опоздавших фото) → удаление.
-// Вызывается только из цикла событий Start (и из тестов).
+// tick — один шаг тикера: отправляет альбомы, после последнего фото которых
+// прошло albumQuietPeriod, и удаляет отправленные, у которых истекло окно
+// опоздавших фото. Вызывается только из цикла событий Start (и из тестов).
 func (vbbot *VBBot) tick() {
+	now := vbbot.clock()
 	for k, v := range vbbot.mediamsg {
-		if v.state == MessageStateInit {
-			v.state = MessageStateToBeSent
-		} else if v.state == MessageStateToBeSent {
+		switch {
+		case v.state == MessageStateInit && now.Sub(v.lastItemAt) >= albumQuietPeriod:
 			vbbot.publishAlbum(k, v)
-		} else if v.state == MessageStateToDelete {
-			v.ticksLeft--
-			if v.ticksLeft <= 0 {
-				delete(vbbot.mediamsg, k)
-			}
+		case v.state == MessageStateToDelete && !now.Before(v.expiresAt):
+			delete(vbbot.mediamsg, k)
 		}
 	}
+}
+
+// clock возвращает текущее время; тесты подменяют его через now.
+func (vbbot *VBBot) clock() time.Time {
+	if vbbot.now != nil {
+		return vbbot.now()
+	}
+	return time.Now()
 }
 
 // dispatch обрабатывает одно обновление. Паника внутри обработчика

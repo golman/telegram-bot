@@ -25,7 +25,7 @@ func TestEmptySendMediaGroupResponse(t *testing.T) {
 		name string
 		send func(b *VBBot)
 	}{
-		{"альбом", func(b *VBBot) { b.sendMediaGroup(pendingAlbum(MessageStateToBeSent)) }},
+		{"альбом", func(b *VBBot) { b.sendMediaGroup(pendingAlbum(MessageStateInit)) }},
 		{"одно фото", func(b *VBBot) { b.sendPhotoMessage(tgbotapi.Update{Message: photo}) }},
 	}
 	for _, tt := range tests {
@@ -80,7 +80,7 @@ func TestPostTooLong(t *testing.T) {
 	}
 	album := func(text string) func(b *VBBot) {
 		return func(b *VBBot) {
-			mm := pendingAlbum(MessageStateToBeSent)
+			mm := pendingAlbum(MessageStateInit)
 			mm.caption = text
 			mm.originalmessageid = 100
 			b.sendMediaGroup(mm)
@@ -197,7 +197,7 @@ func TestPublishErrorHidesAPIText(t *testing.T) {
 		},
 		{
 			name: "альбом", method: "sendMediaGroup",
-			send:      func(b *VBBot) { b.sendMediaGroup(pendingAlbum(MessageStateToBeSent)) },
+			send:      func(b *VBBot) { b.sendMediaGroup(pendingAlbum(MessageStateInit)) },
 			wantTexts: []string{PublishFailedMessage},
 		},
 		{

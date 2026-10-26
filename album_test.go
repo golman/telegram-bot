@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
+	"time"
 
 	tgbotapi "github.com/mymmrac/telego"
 )
@@ -79,7 +81,7 @@ func pressButton(t *testing.T, vb *VBBot, f *fakeAPI, id, data string, reply *tg
 // TestAlbumEndToEnd проходит путь альбома из двух фото: элементы приходят
 // отдельными обновлениями, тикер публикует альбом одним sendMediaGroup,
 // автор получает подтверждение и нажимает «Не актуально», затем «Восстановить».
-// Тикер не запускается: шаги выполняются вызовами tick().
+// Тикер не запускается: время двигает fakeClock, шаги выполняются вызовами tick().
 func TestAlbumEndToEnd(t *testing.T) {
 	// «Продам» — 6 UTF-16 units, пробел — 1, 🚲 — 2 (вне BMP).
 	bold := []tgbotapi.MessageEntity{{Type: "bold", Offset: 0, Length: 6}}
@@ -130,6 +132,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			vb, f := newTestBot(t, nil)
 			vb.mediamsg = map[string]*MediaMessage{}
+			clock := useFakeClock(vb)
 			// Авторизацию покрывает auth_test.go.
 			vb.cfg.authEnabled = false
 
@@ -141,14 +144,14 @@ func TestAlbumEndToEnd(t *testing.T) {
 				vb.handleUpdate(tgbotapi.Update{Message: m})
 			}
 
-			// Первый шаг тикера только помечает альбом к отправке.
-			vb.tick()
+			// Пока тишина короче albumQuietPeriod, альбом ждёт остальные фото.
+			clock.wait(vb, albumQuietPeriod-time.Second)
 			if got := f.byMethod("sendMediaGroup"); len(got) != 0 {
-				t.Fatalf("после первого шага тикера sendMediaGroup вызван %d раз, ожидалось 0", len(got))
+				t.Fatalf("до конца тишины sendMediaGroup вызван %d раз, ожидалось 0", len(got))
 			}
-			// Второй шаг отправляет альбом. Удаление накопителя проверяет
-			// TestLateAlbumItem.
-			vb.tick()
+			// Тишина закончилась — альбом отправлен. Удаление накопителя
+			// проверяет TestLateAlbumItem.
+			clock.wait(vb, time.Second)
 
 			sent := f.byMethod("sendMessage")
 			delays := 0
@@ -293,30 +296,26 @@ func TestAlbumEndToEnd(t *testing.T) {
 
 // TestLateAlbumItem: фото альбома, пришедшие после его публикации, не создают
 // новый альбом без подписи. Автор один раз узнаёт, что они не попали
-// в объявление. Накопитель хранится albumLateWindowTicks шагов тикера
-// после отправки и затем удаляется.
+// в объявление. Накопитель хранится albumLateWindow после отправки
+// и затем удаляется.
 func TestLateAlbumItem(t *testing.T) {
 	vb, f := newTestBot(t, nil)
 	vb.mediamsg = map[string]*MediaMessage{}
 	vb.cfg.authEnabled = false
+	clock := useFakeClock(vb)
 
 	vb.handleUpdate(tgbotapi.Update{Message: albumItem(100, "p1", "Продам", nil)})
-	vb.tick()
-	vb.tick()
+	clock.wait(vb, albumQuietPeriod)
 	if got := len(f.byMethod("sendMediaGroup")); got != 1 {
 		t.Fatalf("sendMediaGroup вызван %d раз, ожидался один", got)
 	}
 	before := len(f.byMethod("sendMessage"))
 
 	// Окно ожидания почти истекло, а фото всё ещё приходят.
-	for i := 0; i < albumLateWindowTicks-1; i++ {
-		vb.tick()
-	}
+	clock.wait(vb, albumLateWindow-time.Second)
 	vb.handleUpdate(tgbotapi.Update{Message: albumItem(101, "p2", "", nil)})
 	vb.handleUpdate(tgbotapi.Update{Message: albumItem(102, "p3", "", nil)})
-	for i := 0; i < 3; i++ {
-		vb.tick()
-	}
+	clock.wait(vb, time.Second)
 
 	if got := len(f.byMethod("sendMediaGroup")); got != 1 {
 		t.Errorf("sendMediaGroup вызван %d раз, опоздавшие фото публиковаться не должны", got)
@@ -336,22 +335,55 @@ func TestLateAlbumItem(t *testing.T) {
 	}
 }
 
-// TestSentAlbumKeptForLateWindow: отправленный альбом удаляется ровно
-// через albumLateWindowTicks шагов тикера, а не на следующем шаге.
+// TestSentAlbumKeptForLateWindow: отправленный альбом хранится albumLateWindow
+// после отправки и удаляется ровно по его истечении.
 func TestSentAlbumKeptForLateWindow(t *testing.T) {
 	captureLog(t)
 	vb, _ := newTestBot(t, nil)
-	vb.mediamsg = map[string]*MediaMessage{"album": pendingAlbum(MessageStateToBeSent)}
+	clock := useFakeClock(vb)
+	vb.mediamsg = map[string]*MediaMessage{"album": pendingAlbum(MessageStateInit)}
 
 	vb.tick()
-	for i := 0; i < albumLateWindowTicks; i++ {
-		if _, ok := vb.mediamsg["album"]; !ok {
-			t.Fatalf("альбом удалён через %d шагов после отправки, ожидалось %d", i, albumLateWindowTicks)
-		}
-		vb.tick()
+	clock.wait(vb, albumLateWindow-time.Second)
+	if _, ok := vb.mediamsg["album"]; !ok {
+		t.Fatalf("альбом удалён раньше, чем через %s после отправки", albumLateWindow)
 	}
+	clock.wait(vb, time.Second)
 	if _, ok := vb.mediamsg["album"]; ok {
-		t.Fatalf("альбом не удалён через %d шагов после отправки", albumLateWindowTicks)
+		t.Fatalf("альбом не удалён через %s после отправки", albumLateWindow)
+	}
+}
+
+// TestAlbumQuietPeriod: альбом отправляется через albumQuietPeriod тишины
+// после последнего фото: каждое новое фото откладывает отправку, поэтому
+// медленно загружаемый альбом не разрывается на части.
+func TestAlbumQuietPeriod(t *testing.T) {
+	captureLog(t)
+	b, f := newTestBot(t, nil)
+	b.mediamsg = map[string]*MediaMessage{}
+	clock := useFakeClock(b)
+	sent := func() int { return len(f.byMethod("sendMediaGroup")) }
+
+	// Фото приходят с паузами чуть меньше периода тишины.
+	gap := albumQuietPeriod - time.Second
+	b.handleUpdate(tgbotapi.Update{Message: albumItem(100, "p1", "Продам", nil)})
+	for i, id := range []int{101, 102, 103} {
+		clock.wait(b, gap)
+		if n := sent(); n != 0 {
+			t.Fatalf("альбом отправлен до фото %d, хотя тишины ещё не было", i+2)
+		}
+		b.handleUpdate(tgbotapi.Update{Message: albumItem(id, fmt.Sprintf("p%d", i+2), "", nil)})
+	}
+	clock.wait(b, gap)
+	if n := sent(); n != 0 {
+		t.Fatalf("альбом отправлен через %s после последнего фото, ожидалось через %s", gap, albumQuietPeriod)
+	}
+	clock.wait(b, time.Second)
+	if n := sent(); n != 1 {
+		t.Fatalf("sendMediaGroup вызван %d раз после тишины, ожидался один", n)
+	}
+	if media := jsonField[[]any](t, f.byMethod("sendMediaGroup")[0].body, "media"); len(media) != 4 {
+		t.Errorf("в альбоме %d фото, ожидалось 4", len(media))
 	}
 }
 
@@ -385,6 +417,7 @@ func TestAlbumAuthOnce(t *testing.T) {
 			b, f := newTestBot(t, tt.fail)
 			b.mediamsg = map[string]*MediaMessage{}
 			b.cfg.authEnabled = true
+			clock := useFakeClock(b)
 			if tt.member != "" {
 				f.respond("getChatMember", tt.member)
 			}
@@ -396,10 +429,11 @@ func TestAlbumAuthOnce(t *testing.T) {
 				albumItem(102, "p3", "", nil),
 			} {
 				b.handleUpdate(tgbotapi.Update{UpdateID: i, Message: m})
+				// Между фото альбома тикер успевает сработать: отклонённый
+				// альбом не должен исчезнуть и проверяться заново.
+				clock.wait(b, albumTickInterval)
 			}
-			for i := 0; i < 3; i++ {
-				b.tick()
-			}
+			clock.wait(b, albumQuietPeriod)
 
 			if got := len(f.byMethod("getChatMember")); got != 1 {
 				t.Errorf("getChatMember вызван %d раз, ожидался один на альбом", got)
@@ -429,13 +463,13 @@ func TestAlbumDelayPromise(t *testing.T) {
 	captureLog(t)
 	b, f := newTestBot(t, nil)
 	b.mediamsg = map[string]*MediaMessage{}
+	clock := useFakeClock(b)
 	b.handleUpdate(tgbotapi.Update{Message: albumItem(100, "p1", "", nil)})
 	b.handleUpdate(tgbotapi.Update{Message: albumItem(101, "p2", "", nil)})
 	if got := authorTexts(t, f); len(got) != 0 {
 		t.Errorf("до подписи автору ушли %q, ожидалось ничего", got)
 	}
-	b.tick()
-	b.tick()
+	clock.wait(b, albumQuietPeriod)
 	if got, want := authorTexts(t, f), []string{"Сообщение не может быть пустым"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("автору ушли %q, ожидалось %q", got, want)
 	}
