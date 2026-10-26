@@ -3,7 +3,8 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -27,24 +28,31 @@ type VBBotCfg struct {
 	authEnabled bool
 }
 
+// fatal логирует ошибку запуска и завершает процесс с кодом 1.
+func fatal(msg string, args ...any) {
+	slog.Error(msg, args...)
+	os.Exit(1)
+}
+
 func main() {
-	if err := setupLogging(); err != nil {
-		log.Fatalf("failed to initialize logging: %v", err)
+	debug, err := setupLogging()
+	if err != nil {
+		fatal("не удалось настроить логирование", "err", err)
 	}
 
 	botToken := getEnvOrDefault("BOT_TOKEN", "")
 	if botToken == "" {
-		log.Fatal("BOT_TOKEN is not set")
+		fatal("не задан BOT_TOKEN")
 	}
 	channelID := getEnvInt64OrDefault("CHANNEL_ID", 0)
 	if channelID == 0 {
-		log.Fatal("CHANNEL_ID is not set or invalid")
+		fatal("не задан или некорректен CHANNEL_ID")
 	}
 
-	opts := append(botOptions(botToken, parseLogLevel(getEnvOrDefault("LOG_LEVEL", "info"))), tgbotapi.WithAPICaller(newAPICaller()))
+	opts := append(botOptions(botToken, debug), tgbotapi.WithAPICaller(newAPICaller()))
 	bot, err := tgbotapi.NewBot(botToken, opts...)
 	if err != nil {
-		log.Fatal(err)
+		fatal("не удалось создать клиент Bot API", "err", err)
 	}
 
 	// SIGINT/SIGTERM отменяют ctx: telego прекращает long polling и закрывает
@@ -59,7 +67,7 @@ func main() {
 
 	updates, err := bot.UpdatesViaLongPolling(ctx, &tgbotapi.GetUpdatesParams{Timeout: longPollTimeoutSeconds})
 	if err != nil {
-		log.Fatal(err)
+		fatal("не удалось запустить long polling", "err", err)
 	}
 
 	b := VBBot{
@@ -73,7 +81,7 @@ func main() {
 	}
 	if err := b.Start(ctx, updates); err != nil {
 		stop()
-		log.Fatal(err)
+		fatal("бот остановился с ошибкой", "err", err)
 	}
 }
 
@@ -93,7 +101,7 @@ func (vbbot *VBBot) Start(ctx context.Context, ch <-chan tgbotapi.Update) error 
 			if !ok {
 				vbbot.flushMediaGroups()
 				if ctx.Err() != nil {
-					log.Println("бот остановлен")
+					slog.Info("бот остановлен")
 					return nil
 				}
 				return errUpdatesClosed
@@ -125,7 +133,8 @@ func (vbbot *VBBot) publishAlbum(id string, mm *MediaMessage) {
 	mm.expiresAt = vbbot.clock().Add(albumLateWindow)
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("паника при отправке альбома %s: %v\n%s", id, r, debug.Stack())
+			slog.Error("паника при отправке альбома", "media_group_id", id, "user_id", mm.userid,
+				"panic", fmt.Sprint(r), "stack", string(debug.Stack()))
 		}
 	}()
 	vbbot.sendMediaGroup(mm)
@@ -138,7 +147,7 @@ func (vbbot *VBBot) admit(update tgbotapi.Update) bool {
 	subscribed, err := vbbot.authByChannel(update)
 	if err != nil {
 		// Сырой текст ошибки API пользователю не показывается.
-		log.Printf("проверка подписки пользователя %d: %v", update.Message.From.ID, err)
+		slog.Warn("не удалось проверить подписку", "user_id", update.Message.From.ID, "err", err)
 		vbbot.sendTextMessage(AuthCheckFailedMessage, chatID)
 		return false
 	}
@@ -192,7 +201,8 @@ func (vbbot *VBBot) addAlbumItem(update tgbotapi.Update) {
 // добавить его в опубликованный пост нельзя, поэтому автор один раз на альбом
 // получает AlbumItemLateMessage.
 func (vbbot *VBBot) rejectLateAlbumItem(mm *MediaMessage, msg *tgbotapi.Message) {
-	log.Printf("фото %d пришло после отправки альбома %s и не опубликовано", msg.MessageID, msg.MediaGroupID)
+	slog.Info("фото пришло после отправки альбома, не опубликовано",
+		"user_id", msg.Chat.ID, "message_id", msg.MessageID, "media_group_id", msg.MediaGroupID)
 	if mm.lateNotified {
 		return
 	}
@@ -228,7 +238,8 @@ func (vbbot *VBBot) clock() time.Time {
 func (vbbot *VBBot) dispatch(update tgbotapi.Update) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("паника при обработке обновления %d: %v\n%s", update.UpdateID, r, debug.Stack())
+			slog.Error("паника при обработке обновления", "update_id", update.UpdateID,
+				"panic", fmt.Sprint(r), "stack", string(debug.Stack()))
 		}
 	}()
 	if update.Message != nil {
@@ -259,7 +270,7 @@ func (vbbot *VBBot) confirmNewAd(chatId int64, replyToId int, sentMsg tgbotapi.M
 		messageID: sentMsg.MessageID,
 	})
 	if err := vbbot.sendMessage(&buttonMsg); err != nil {
-		log.Printf("не удалось отправить подтверждение в чат %d: %v", chatId, err)
+		slog.Warn("не удалось отправить подтверждение", "chat_id", chatId, "err", err)
 		vbbot.sendTextMessage(ConfirmFailedMessage, chatId)
 	}
 }
@@ -271,7 +282,7 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 		return
 	}
 	if update.Message.From == nil {
-		log.Printf("сообщение %d в чате %d без автора, пропущено", update.Message.MessageID, update.Message.Chat.ID)
+		slog.Info("сообщение без автора, пропущено", "chat_id", update.Message.Chat.ID, "message_id", update.Message.MessageID)
 		return
 	}
 	msg := update.Message
@@ -285,7 +296,7 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 	}
 	// Принимаются только текст и фото.
 	if msg.Photo == nil && msg.Text == "" {
-		log.Printf("сообщение %d пользователя %d не текст и не фото, отклонено", msg.MessageID, msg.Chat.ID)
+		slog.Info("сообщение не текст и не фото, отклонено", "user_id", msg.Chat.ID, "message_id", msg.MessageID)
 		vbbot.sendTextMessage(UnsupportedMessage, msg.Chat.ID)
 		return
 	}

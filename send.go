@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 
 	tgbotapi "github.com/mymmrac/telego"
 	"github.com/mymmrac/telego/telegoutil"
@@ -146,7 +146,7 @@ func (vbbot *VBBot) rejectTooLong(src postSource, chatID int64, replyTo int) boo
 	if n <= limit {
 		return false
 	}
-	log.Printf("объявление пользователя %d слишком длинное: %d при максимуме %d", src.authorID, n, limit)
+	slog.Info("объявление слишком длинное", "user_id", src.authorID, "length", n, "limit", limit)
 	msg := tgbotapi.SendMessageParams{
 		ChatID: tgbotapi.ChatID{ID: chatID},
 		Text:   postTooLongText(n - limit),
@@ -154,7 +154,7 @@ func (vbbot *VBBot) rejectTooLong(src postSource, chatID int64, replyTo int) boo
 		ReplyParameters: &tgbotapi.ReplyParameters{MessageID: replyTo, AllowSendingWithoutReply: true},
 	}
 	if err := vbbot.sendMessage(&msg); err != nil {
-		log.Printf("не удалось отправить сообщение в чат %d: %v", chatID, err)
+		slog.Warn("не удалось отправить сообщение", "chat_id", chatID, "err", err)
 	}
 	return true
 }
@@ -166,7 +166,7 @@ func (vbbot *VBBot) sendTextMessage(txtMsg string, chatId int64) {
 	}
 	if err := vbbot.sendMessage(&botMsg); err != nil {
 		// Второе сообщение в тот же чат, скорее всего, тоже не дойдёт.
-		log.Printf("не удалось отправить сообщение в чат %d: %v", chatId, err)
+		slog.Warn("не удалось отправить сообщение", "chat_id", chatId, "err", err)
 	}
 }
 
@@ -178,6 +178,6 @@ func (vbbot *VBBot) sendMessage(msg *tgbotapi.SendMessageParams) error {
 // reportPublishError логирует ошибку публикации объявления и сообщает автору
 // в чат chatID понятный текст. Сырой текст ошибки API автору не показывается.
 func (vbbot *VBBot) reportPublishError(err error, chatID int64) {
-	log.Printf("не удалось опубликовать объявление из чата %d: %v", chatID, err)
+	slog.Error("не удалось опубликовать объявление", "chat_id", chatID, "err", err)
 	vbbot.sendTextMessage(PublishFailedMessage, chatID)
 }

@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 
 	tgbotapi "github.com/mymmrac/telego"
 )
@@ -22,6 +22,6 @@ func (vbbot *VBBot) authByChannel(update tgbotapi.Update) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	log.Println(cm)
+	slog.Debug("статус в канале", "user_id", cmc.UserID, "status", cm.MemberStatus())
 	return cm.MemberIsMember(), nil
 }

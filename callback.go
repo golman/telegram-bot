@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -91,7 +91,7 @@ func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 			Text:            answer,
 		})
 		if err != nil {
-			log.Printf("ответ на callback %q: %v", query.ID, err)
+			slog.Warn("не удалось ответить на callback", "query_id", query.ID, "err", err)
 		}
 	}()
 
@@ -100,7 +100,7 @@ func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 		err = fmt.Errorf("callback data %q: %w", query.Data, errForeignChat)
 	}
 	if err != nil {
-		log.Println(err)
+		slog.Warn("некорректные callback data", "user_id", query.From.ID, "data", query.Data, "err", err)
 		answer = CallbackInvalidMessage
 		return
 	}
@@ -137,7 +137,7 @@ func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	// «message is not modified» — пост уже в нужном состоянии (кнопку нажали
 	// повторно или из старого подтверждения), это успех.
 	if err != nil && !isNotModified(err) {
-		log.Printf("редактирование поста %d в канале %d: %v", d.messageID, d.chatID, err)
+		slog.Error("не удалось изменить пост в канале", "chat_id", d.chatID, "channel_msg_id", d.messageID, "err", err)
 		answer = ChannelEditFailedMessage
 		return
 	}
@@ -160,7 +160,7 @@ func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 		ReplyMarkup: toggleKeyboard(next),
 	})
 	if err != nil && !isNotModified(err) {
-		log.Printf("редактирование подтверждения %d в чате %d: %v", msg.MessageID, msg.Chat.ID, err)
+		slog.Warn("не удалось изменить подтверждение", "chat_id", msg.Chat.ID, "message_id", msg.MessageID, "err", err)
 	}
 }
 

@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -29,11 +29,33 @@ type fileLogConfig struct {
 	compress   bool
 }
 
-func setupLogging() error {
+// logLevel — уровень логов бота, его выставляет LOG_LEVEL.
+var logLevel = new(slog.LevelVar)
+
+// newLogHandler — формат логов бота: текст «key=value», время в UTC.
+// Тесты перехватывают логи тем же обработчиком.
+func newLogHandler(w io.Writer, level slog.Leveler) slog.Handler {
+	return slog.NewTextHandler(w, &slog.HandlerOptions{
+		Level: level,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey && len(groups) == 0 {
+				a.Value = slog.TimeValue(a.Value.Time().UTC())
+			}
+			return a
+		},
+	})
+}
+
+// setupLogging направляет логи в stdout и в файл с ротацией и выставляет
+// уровень из LOG_LEVEL. Возвращает true, если включён уровень debug.
+func setupLogging() (bool, error) {
+	// До открытия файла логи идут в stdout в том же формате: туда попадут
+	// предупреждения о некорректных LOG_* при разборе конфига.
+	slog.SetDefault(slog.New(newLogHandler(os.Stdout, logLevel)))
 	cfg := loadLogConfigFromEnv()
 
 	if err := os.MkdirAll(filepath.Dir(cfg.filePath), 0o755); err != nil {
-		return fmt.Errorf("create log directory: %w", err)
+		return false, fmt.Errorf("создание каталога логов: %w", err)
 	}
 
 	rotatingLog := &lumberjack.Logger{
@@ -44,12 +66,23 @@ func setupLogging() error {
 		Compress:   cfg.compress,
 	}
 
-	log.SetOutput(io.MultiWriter(os.Stdout, rotatingLog))
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC)
-	log.Printf("logging configured: file=%s max_size_mb=%d max_backups=%d max_age_days=%d compress=%t",
-		cfg.filePath, cfg.maxSizeMB, cfg.maxBackups, cfg.maxAgeDays, cfg.compress)
+	slog.SetDefault(slog.New(newLogHandler(io.MultiWriter(os.Stdout, rotatingLog), logLevel)))
+	// LOG_LEVEL разбирается после настройки вывода, чтобы предупреждение
+	// о некорректном значении попало в файл.
+	debug := parseLogLevel(getEnvOrDefault("LOG_LEVEL", "info"))
+	if debug {
+		logLevel.Set(slog.LevelDebug)
+	}
+	slog.Info("логирование настроено", "file", cfg.filePath, "log_level", logLevel.Level(),
+		"max_size_mb", cfg.maxSizeMB, "max_backups", cfg.maxBackups, "max_age_days", cfg.maxAgeDays, "compress", cfg.compress)
 
-	return nil
+	return debug, nil
+}
+
+// warnBadEnv сообщает, что переменная окружения задана некорректно.
+func warnBadEnv(key, raw string, fallback any) {
+	slog.Warn("некорректная переменная окружения, используется значение по умолчанию",
+		"var", key, "value", raw, "default", fallback)
 }
 
 func loadLogConfigFromEnv() fileLogConfig {
@@ -77,7 +110,7 @@ func getEnvIntOrDefault(key string, fallback int) int {
 	}
 	value, err := strconv.Atoi(raw)
 	if err != nil || value <= 0 {
-		log.Printf("invalid %s=%q, using default %d", key, raw, fallback)
+		warnBadEnv(key, raw, fallback)
 		return fallback
 	}
 	return value
@@ -90,7 +123,7 @@ func getEnvBoolOrDefault(key string, fallback bool) bool {
 	}
 	value, err := strconv.ParseBool(raw)
 	if err != nil {
-		log.Printf("invalid %s=%q, using default %t", key, raw, fallback)
+		warnBadEnv(key, raw, fallback)
 		return fallback
 	}
 	return value
@@ -103,14 +136,14 @@ func getEnvInt64OrDefault(key string, fallback int64) int64 {
 	}
 	value, err := strconv.ParseInt(raw, 10, 64)
 	if err != nil {
-		log.Printf("invalid %s=%q, using default %d", key, raw, fallback)
+		warnBadEnv(key, raw, fallback)
 		return fallback
 	}
 	return value
 }
 
-// telegoLogger направляет логи telego в стандартный log, то есть в stdout
-// и в файл вместе с остальными логами бота. Токен в сообщениях заменяется
+// telegoLogger направляет логи telego в slog, то есть в stdout и в файл
+// вместе с остальными логами бота. Токен в сообщениях заменяется
 // на BOT_TOKEN. Debug-записи (URL запросов, их тела и ответы API с текстами
 // объявлений и данными пользователей) пишутся только при LOG_LEVEL=debug.
 type telegoLogger struct {
@@ -124,16 +157,16 @@ func newTelegoLogger(token string, debug bool) *telegoLogger {
 
 func (l *telegoLogger) Debugf(format string, args ...any) {
 	if l.debug {
-		l.print(format, args...)
+		slog.Debug(l.text(format, args...))
 	}
 }
 
 func (l *telegoLogger) Errorf(format string, args ...any) {
-	l.print(format, args...)
+	slog.Error(l.text(format, args...))
 }
 
-func (l *telegoLogger) print(format string, args ...any) {
-	log.Print("telego: " + l.replacer.Replace(fmt.Sprintf(format, args...)))
+func (l *telegoLogger) text(format string, args ...any) string {
+	return "telego: " + l.replacer.Replace(fmt.Sprintf(format, args...))
 }
 
 // parseLogLevel разбирает LOG_LEVEL и возвращает true для уровня debug.
@@ -146,7 +179,7 @@ func parseLogLevel(raw string) bool {
 	case "debug":
 		return true
 	default:
-		log.Printf("некорректный LOG_LEVEL=%q, используется info", raw)
+		slog.Warn("некорректный LOG_LEVEL, используется info", "value", raw)
 		return false
 	}
 }

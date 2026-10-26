@@ -180,7 +180,7 @@ func TestDispatchRecoversFromPanic(t *testing.T) {
 	// Паника должна была произойти и попасть в лог вместе со стеком,
 	// иначе тест прошёл бы, даже если обработчик вышел без паники.
 	out := logs.String()
-	if !strings.Contains(out, "паника при обработке обновления 7") || !strings.Contains(out, "goroutine") {
+	if !strings.Contains(out, `msg="паника при обработке обновления"`) || !strings.Contains(out, "update_id=7") || !strings.Contains(out, "goroutine") {
 		t.Fatalf("в логе нет паники со стеком:\n%s", out)
 	}
 }
@@ -199,7 +199,7 @@ func TestTickRecoversFromAlbumPanic(t *testing.T) {
 	b.tick()
 
 	out := logs.String()
-	if !strings.Contains(out, "паника при отправке альбома album") || !strings.Contains(out, "goroutine") {
+	if !strings.Contains(out, `msg="паника при отправке альбома"`) || !strings.Contains(out, "media_group_id=album") || !strings.Contains(out, "goroutine") {
 		t.Fatalf("в логе нет паники со стеком:\n%s", out)
 	}
 	if got := b.mediamsg["album"].state; got != MessageStateToDelete {

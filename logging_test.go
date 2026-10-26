@@ -2,7 +2,12 @@ package main
 
 import (
 	"context"
+	"io"
+	"log/slog"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -19,9 +24,10 @@ func TestTelegoLogger(t *testing.T) {
 		wantLog   bool
 		wantInLog string
 	}{
-		{"ошибка пишется всегда", false, func(l *telegoLogger) { l.Errorf("Getting updates: %s", "timeout") }, true, "telego: Getting updates: timeout"},
+		// Ошибки — на уровне ERROR: на уровне info они не должны теряться.
+		{"ошибка пишется всегда", false, func(l *telegoLogger) { l.Errorf("Getting updates: %s", "timeout") }, true, `level=ERROR msg="telego: Getting updates: timeout"`},
 		{"debug скрыт на уровне info", false, func(l *telegoLogger) { l.Debugf("API response %s: %s", "getUpdates", "Иван") }, false, ""},
-		{"debug пишется на уровне debug", true, func(l *telegoLogger) { l.Debugf("API response %s: %s", "getUpdates", "Иван") }, true, "telego: API response getUpdates: Иван"},
+		{"debug пишется на уровне debug", true, func(l *telegoLogger) { l.Debugf("API response %s: %s", "getUpdates", "Иван") }, true, `level=DEBUG msg="telego: API response getUpdates: Иван"`},
 		{"токен в ошибке скрыт", false, func(l *telegoLogger) { l.Errorf("call to %q", "https://api.telegram.org/bot"+testToken+"/getMe") }, true, "BOT_TOKEN"},
 		{"токен в debug скрыт", true, func(l *telegoLogger) { l.Debugf("API call to: %q", "https://api.telegram.org/bot"+testToken+"/getMe") }, true, "BOT_TOKEN"},
 	}
@@ -155,4 +161,90 @@ func TestEnvHelpers(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestSetupLogging: логи идут в файл в формате key=value со временем в UTC,
+// LOG_LEVEL управляет уровнем, а предупреждение о некорректном LOG_LEVEL
+// попадает в файл, а не теряется до настройки вывода.
+func TestSetupLogging(t *testing.T) {
+	tests := []struct {
+		level     string
+		wantDebug bool
+		wantWarn  bool
+	}{
+		{"", false, false},
+		{"debug", true, false},
+		{"trace", false, true},
+	}
+	for _, tt := range tests {
+		t.Run("LOG_LEVEL="+tt.level, func(t *testing.T) {
+			captureLog(t) // восстановит slog.Default после теста
+			t.Cleanup(func() { logLevel.Set(slog.LevelInfo) })
+			file := filepath.Join(t.TempDir(), "logs", "bot.log")
+			t.Setenv("LOG_FILE_PATH", file)
+			t.Setenv("LOG_LEVEL", tt.level)
+
+			debug, err := setupLogging()
+			if err != nil {
+				t.Fatalf("setupLogging: %v", err)
+			}
+			slog.Debug("проверка отладки")
+
+			if debug != tt.wantDebug {
+				t.Errorf("debug = %v, ожидалось %v", debug, tt.wantDebug)
+			}
+			raw, err := os.ReadFile(file)
+			if err != nil {
+				t.Fatalf("лог-файл не создан: %v", err)
+			}
+			out := string(raw)
+			if !regexp.MustCompile(`(?m)^time=\S+Z level=INFO msg="логирование настроено"`).MatchString(out) {
+				t.Errorf("нет записи о настройке в формате key=value со временем в UTC:\n%s", out)
+			}
+			if got := strings.Contains(out, "проверка отладки"); got != tt.wantDebug {
+				t.Errorf("debug-запись в файле: %v, ожидалось %v:\n%s", got, tt.wantDebug, out)
+			}
+			if got := strings.Contains(out, "некорректный LOG_LEVEL"); got != tt.wantWarn {
+				t.Errorf("предупреждение о LOG_LEVEL в файле: %v, ожидалось %v:\n%s", got, tt.wantWarn, out)
+			}
+		})
+	}
+}
+
+// TestSetupLoggingBadConfigWarning: предупреждение о некорректной LOG_*
+// переменной пишется в формате бота, а не в формате пакета log.
+func TestSetupLoggingBadConfigWarning(t *testing.T) {
+	captureLog(t)
+	t.Cleanup(func() { logLevel.Set(slog.LevelInfo) })
+	t.Setenv("LOG_FILE_PATH", filepath.Join(t.TempDir(), "bot.log"))
+	t.Setenv("LOG_MAX_BACKUPS", "abc")
+
+	stdout := captureStdout(t, func() {
+		if _, err := setupLogging(); err != nil {
+			t.Fatalf("setupLogging: %v", err)
+		}
+	})
+	if !regexp.MustCompile(`(?m)^time=\S+Z level=WARN msg="некорректная переменная окружения.*var=LOG_MAX_BACKUPS`).MatchString(stdout) {
+		t.Errorf("нет предупреждения о LOG_MAX_BACKUPS в формате бота:\n%s", stdout)
+	}
+}
+
+// captureStdout перехватывает os.Stdout на время fn и возвращает вывод.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	prev := os.Stdout
+	os.Stdout = w
+	done := make(chan string)
+	go func() {
+		b, _ := io.ReadAll(r)
+		done <- string(b)
+	}()
+	fn()
+	os.Stdout = prev
+	w.Close()
+	return <-done
 }

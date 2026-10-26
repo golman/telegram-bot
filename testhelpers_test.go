@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"log/slog"
 	"reflect"
 	"testing"
 	"time"
@@ -11,13 +12,17 @@ import (
 	tgbotapi "github.com/mymmrac/telego"
 )
 
-// captureLog перенаправляет стандартный логгер в буфер до конца теста.
+// captureLog перенаправляет логи slog в буфер до конца теста. Формат тот же,
+// что в проде (newLogHandler), уровень — debug, чтобы видеть все записи.
 func captureLog(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
+	prev := slog.Default()
+	// slog.SetDefault перенаправляет и пакет log; его вывод восстанавливается отдельно.
 	prevOut, prevFlags := log.Writer(), log.Flags()
-	log.SetOutput(&buf)
+	slog.SetDefault(slog.New(newLogHandler(&buf, slog.LevelDebug)))
 	t.Cleanup(func() {
+		slog.SetDefault(prev)
 		log.SetOutput(prevOut)
 		log.SetFlags(prevFlags)
 	})

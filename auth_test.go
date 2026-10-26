@@ -48,7 +48,7 @@ func TestHandleUpdateAuth(t *testing.T) {
 			fail:           map[string]string{"getChatMember": "Bad Request: chat not found"},
 			wantMemberCall: 1,
 			want:           []wantMessage{{chat: testAuthorID, textPrefix: AuthCheckFailedMessage}},
-			wantLog:        []string{"проверка подписки пользователя 42: ", "chat not found"},
+			wantLog:        []string{`msg="не удалось проверить подписку"`, "user_id=42", "chat not found"},
 		},
 		{
 			name:           "пользователь не участник канала",

@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"path"
 	"time"
@@ -47,8 +47,8 @@ func (c *rateLimitCaller) Call(ctx context.Context, url string, data *ta.Request
 			return resp, nil
 		}
 		// В URL есть токен бота, поэтому в лог идёт только имя метода.
-		log.Printf("Telegram ограничил частоту запросов %s, повтор через %s (попытка %d из %d)",
-			path.Base(url), wait, attempt+1, c.attempts)
+		slog.Warn("Telegram ограничил частоту запросов, повтор",
+			"method", path.Base(url), "retry_after", wait, "attempt", attempt+1, "attempts", c.attempts)
 		if c.sleep(ctx, wait) != nil {
 			return resp, nil
 		}
