@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	tgbotapi "github.com/mymmrac/telego"
 	ta "github.com/mymmrac/telego/telegoapi"
 )
 
@@ -135,5 +138,81 @@ func TestRateLimitCaller(t *testing.T) {
 				t.Errorf("в лог попал токен из URL:\n%s", logs.String())
 			}
 		})
+	}
+}
+
+// deadlineCaller запоминает дедлайн контекста, с которым его вызвали.
+type deadlineCaller struct {
+	deadline time.Time
+	ok       bool
+}
+
+func (d *deadlineCaller) Call(ctx context.Context, _ string, _ *ta.RequestData) (*ta.Response, error) {
+	d.deadline, d.ok = ctx.Deadline()
+	return okResponse().resp, nil
+}
+
+func TestTimeoutCallerSetsDeadline(t *testing.T) {
+	next := &deadlineCaller{}
+	c := newTimeoutCaller(next, 5*time.Second)
+	start := time.Now()
+
+	if _, err := c.Call(context.Background(), "u", &ta.RequestData{BodyRaw: []byte(`{}`)}); err != nil {
+		t.Fatalf("ошибка: %v", err)
+	}
+	if !next.ok {
+		t.Fatal("у запроса нет дедлайна")
+	}
+	if d := next.deadline.Sub(start); d < 5*time.Second || d > 6*time.Second {
+		t.Errorf("дедлайн через %s, ожидалось около 5s", d)
+	}
+}
+
+// TestTimeoutCallerAbortsHangingRequest: зависший запрос прерывается
+// по таймауту, а не висит бесконечно (fasthttp без таймаута ждал бы вечно).
+func TestTimeoutCallerAbortsHangingRequest(t *testing.T) {
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release }))
+	t.Cleanup(srv.Close)
+	t.Cleanup(func() { close(release) })
+	bot, err := tgbotapi.NewBot("123456:"+strings.Repeat("A", 35),
+		tgbotapi.WithAPIServer(srv.URL), tgbotapi.WithDiscardLogger(),
+		tgbotapi.WithAPICaller(newTimeoutCaller(ta.DefaultFastHTTPCaller, 100*time.Millisecond)))
+	if err != nil {
+		t.Fatalf("не удалось создать бота: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := bot.SendMessage(context.Background(), &tgbotapi.SendMessageParams{ChatID: tgbotapi.ChatID{ID: 1}, Text: "x"})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("запрос к зависшему серверу завершился без ошибки")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("запрос к зависшему серверу не прервался за 2s, ожидалось около 100ms")
+	}
+}
+
+// TestNewAPICaller: в боте повторы при 429 обёрнуты вокруг таймаута,
+// чтобы каждая попытка получала свой дедлайн, а таймаут был больше
+// long polling, иначе getUpdates обрывался бы раньше ответа Telegram.
+func TestNewAPICaller(t *testing.T) {
+	rl, ok := newAPICaller().(*rateLimitCaller)
+	if !ok {
+		t.Fatalf("внешний caller %T, ожидался *rateLimitCaller", newAPICaller())
+	}
+	tc, ok := rl.next.(*timeoutCaller)
+	if !ok {
+		t.Fatalf("под rateLimitCaller лежит %T, ожидался *timeoutCaller", rl.next)
+	}
+	if tc.timeout != apiTimeout {
+		t.Errorf("таймаут %s, ожидался apiTimeout %s", tc.timeout, apiTimeout)
+	}
+	if poll := time.Duration(longPollTimeoutSeconds) * time.Second; apiTimeout < poll+5*time.Second {
+		t.Errorf("apiTimeout %s должен быть хотя бы на 5s больше long polling %s", apiTimeout, poll)
 	}
 }

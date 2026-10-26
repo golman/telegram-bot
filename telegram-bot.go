@@ -12,7 +12,6 @@ import (
 	"time"
 
 	tgbotapi "github.com/mymmrac/telego"
-	ta "github.com/mymmrac/telego/telegoapi"
 )
 
 type VBBot struct {
@@ -42,7 +41,7 @@ func main() {
 	}
 
 	bot, err := tgbotapi.NewBot(botToken, tgbotapi.WithDefaultDebugLogger(),
-		tgbotapi.WithAPICaller(newRateLimitCaller(ta.DefaultFastHTTPCaller)))
+		tgbotapi.WithAPICaller(newAPICaller()))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -57,7 +56,7 @@ func main() {
 		stop()
 	}()
 
-	updates, err := bot.UpdatesViaLongPolling(ctx, nil)
+	updates, err := bot.UpdatesViaLongPolling(ctx, &tgbotapi.GetUpdatesParams{Timeout: longPollTimeoutSeconds})
 	if err != nil {
 		log.Fatal(err)
 	}

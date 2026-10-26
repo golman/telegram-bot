@@ -66,3 +66,36 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 		return nil
 	}
 }
+
+// longPollTimeoutSeconds — сколько Telegram держит запрос getUpdates без новых обновлений.
+const longPollTimeoutSeconds = 8
+
+// apiTimeout — предельное время одной попытки запроса к Bot API. Клиент fasthttp
+// в telego создан без таймаута, и без дедлайна зависший запрос остановил бы
+// цикл событий навсегда. Должен быть больше long polling, иначе getUpdates
+// обрывался бы раньше ответа Telegram.
+const apiTimeout = 15 * time.Second
+
+// newAPICaller собирает caller для бота: повтор при 429 поверх таймаута,
+// чтобы у каждой попытки был свой дедлайн.
+func newAPICaller() ta.Caller {
+	return newRateLimitCaller(newTimeoutCaller(ta.DefaultFastHTTPCaller, apiTimeout))
+}
+
+// timeoutCaller ограничивает каждый запрос временем timeout. Используется
+// дедлайн контекста: fasthttp в telego прерывает запрос только по дедлайну,
+// простую отмену ctx он не замечает.
+type timeoutCaller struct {
+	next    ta.Caller
+	timeout time.Duration
+}
+
+func newTimeoutCaller(next ta.Caller, timeout time.Duration) *timeoutCaller {
+	return &timeoutCaller{next: next, timeout: timeout}
+}
+
+func (c *timeoutCaller) Call(ctx context.Context, url string, data *ta.RequestData) (*ta.Response, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.timeout)
+	defer cancel()
+	return c.next.Call(ctx, url, data)
+}
