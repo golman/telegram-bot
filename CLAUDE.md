@@ -32,7 +32,10 @@ go run .                  # локальный запуск (нужны пере
 go vet ./...
 go test -race ./...       # все тесты
 go test -run TestName .   # один тест
+docker compose up -d --build   # запуск в Docker, переменные из .env
 ```
+
+Образ (`Dockerfile`): сборка на `golang` последней стабильной версии, запуск на `distroless/static` без shell от пользователя nonroot (65532). Оба образа закреплены по digest и обновляются Dependabot. Логи пишутся в том `logs` (`/app/logs`) и в stdout (`docker compose logs`). `stop_grace_period: 30s` в `docker-compose.yml` даёт боту дождаться конца long polling и отправить накопленные альбомы.
 
 CI (`.github/workflows/ci.yml`) на каждый push в `master` и PR запускает `gofmt`, `go mod tidy -diff`, `go vet`, `go test -race`, staticcheck, govulncheck и сборку на двух версиях Go: минимальной из `go.mod` и последней стабильной (`stable`). Actions закреплены по SHA; их и Go-модули обновляет Dependabot (`.github/dependabot.yml`, раз в неделю, одной PR на экосистему). Версии staticcheck и govulncheck закреплены в `go run …@vX` прямо в workflow, Dependabot их не видит — обновляй вручную.
 

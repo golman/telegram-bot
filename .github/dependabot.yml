@@ -22,3 +22,11 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+
+  # Базовые образы в Dockerfile (закреплены по digest).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "зависимости"

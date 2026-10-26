@@ -43,7 +43,7 @@
 
 - [x] **Обновить зависимости.** `telego` v1.9.0 → v1.12.1, `fasthttp`, `klauspost/compress`, `sonic`, `golang.org/x/*`, затем `go mod tidy`.
 - [x] **CI на GitHub Actions.** `gofmt`, `go vet`, `go test -race`, staticcheck, govulncheck; добавить `.github/dependabot.yml`.
-- [ ] **Dockerfile и docker-compose.** Multi-stage, distroless, `restart: unless-stopped`, volume для логов.
+- [x] **Dockerfile и docker-compose.** Multi-stage, distroless, `restart: unless-stopped`, volume для логов.
 - [ ] **README и `.env.example`.** Что делает бот, как настроить права в канале, переменные окружения, запуск.
 
 ## Качество кода

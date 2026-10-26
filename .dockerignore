@@ -1,0 +1,13 @@
+# В контекст сборки попадает только то, что нужно для go build.
+# Секреты и логи с данными пользователей — тем более нет.
+.env
+.env.*
+logs/
+/TelegramBot
+/telegram-bot
+.git/
+.github/
+.claude/
+docs/
+*.md
+*_test.go
