@@ -138,6 +138,11 @@ func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
 	}
 }
 
+// sayNoEmptyMessage отвечает автору, что у объявления нет текста или подписи.
+func (vbbot *VBBot) sayNoEmptyMessage(chatId int64) {
+	vbbot.sendTextMessage(EmptyMessage, chatId)
+}
+
 // rejectTooLong проверяет, уместится ли пост из src в лимит Telegram.
 // Если нет, отвечает автору в чате chatID на его сообщение replyTo
 // и возвращает true. Такой пост не отправляется.

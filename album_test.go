@@ -128,7 +128,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 				if len(sent) != 1 {
 					t.Fatalf("sendMessage вызван %d раз, ожидался один отказ", len(sent))
 				}
-				if got, want := jsonString(t, sent[0].body, "text"), "Сообщение не может быть пустым"; got != want {
+				if got, want := jsonString(t, sent[0].body, "text"), EmptyMessage; got != want {
 					t.Errorf("сообщение автору = %q, ожидалось %q", got, want)
 				}
 				return
@@ -419,7 +419,7 @@ func TestAlbumDelayPromise(t *testing.T) {
 		t.Errorf("до подписи автору ушли %q, ожидалось ничего", got)
 	}
 	clock.wait(b, albumQuietPeriod)
-	if got, want := authorTexts(t, f), []string{"Сообщение не может быть пустым"}; !reflect.DeepEqual(got, want) {
+	if got, want := authorTexts(t, f), []string{EmptyMessage}; !reflect.DeepEqual(got, want) {
 		t.Errorf("автору ушли %q, ожидалось %q", got, want)
 	}
 }
