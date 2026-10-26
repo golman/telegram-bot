@@ -107,3 +107,52 @@ func TestParseLogLevel(t *testing.T) {
 		})
 	}
 }
+
+// TestEnvHelpers: пустая переменная даёт значение по умолчанию молча,
+// некорректная — значение по умолчанию и предупреждение в лог с именем
+// переменной, корректная разбирается. Пробелы по краям игнорируются.
+func TestEnvHelpers(t *testing.T) {
+	const key = "TEST_TELEGRAM_BOT_ENV"
+	tests := []struct {
+		name     string
+		raw      string
+		get      func() any
+		want     any
+		wantWarn bool
+	}{
+		{"строка: пусто", "", func() any { return getEnvOrDefault(key, "def") }, "def", false},
+		{"строка: только пробелы", "   ", func() any { return getEnvOrDefault(key, "def") }, "def", false},
+		{"строка: значение с пробелами", "  abc ", func() any { return getEnvOrDefault(key, "def") }, "abc", false},
+
+		{"int: пусто", "", func() any { return getEnvIntOrDefault(key, 5) }, 5, false},
+		{"int: число", " 12 ", func() any { return getEnvIntOrDefault(key, 5) }, 12, false},
+		{"int: не число", "abc", func() any { return getEnvIntOrDefault(key, 5) }, 5, true},
+		// Размеры и сроки логов должны быть положительными.
+		{"int: ноль", "0", func() any { return getEnvIntOrDefault(key, 5) }, 5, true},
+		{"int: отрицательное", "-3", func() any { return getEnvIntOrDefault(key, 5) }, 5, true},
+
+		// ID каналов отрицательные и не помещаются в int32.
+		{"int64: ID канала", "-1001234567890", func() any { return getEnvInt64OrDefault(key, 0) }, int64(-1001234567890), false},
+		{"int64: пусто", "", func() any { return getEnvInt64OrDefault(key, 7) }, int64(7), false},
+		{"int64: не число", "-100abc", func() any { return getEnvInt64OrDefault(key, 7) }, int64(7), true},
+
+		{"bool: пусто", "", func() any { return getEnvBoolOrDefault(key, true) }, true, false},
+		{"bool: false", "false", func() any { return getEnvBoolOrDefault(key, true) }, false, false},
+		{"bool: 0", "0", func() any { return getEnvBoolOrDefault(key, true) }, false, false},
+		{"bool: TRUE", " TRUE ", func() any { return getEnvBoolOrDefault(key, false) }, true, false},
+		{"bool: не bool", "да", func() any { return getEnvBoolOrDefault(key, true) }, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := captureLog(t)
+			t.Setenv(key, tt.raw)
+
+			if got := tt.get(); got != tt.want {
+				t.Errorf("значение %v (%T), ожидалось %v (%T)", got, got, tt.want, tt.want)
+			}
+			if got := strings.Contains(logs.String(), key); got != tt.wantWarn {
+				t.Errorf("предупреждение в логе: %v, ожидалось %v:\n%s", got, tt.wantWarn, logs.String())
+			}
+		})
+	}
+}

@@ -102,7 +102,7 @@ func TestStartFlushesPendingAlbums(t *testing.T) {
 		return &MediaMessage{
 			fileid:   []string{photo},
 			fullname: "Иван",
-			userid:   testAlbumAuthorID,
+			userid:   testAuthorID,
 			caption:  "Продам",
 			state:    state,
 		}
@@ -182,17 +182,6 @@ func TestDispatchRecoversFromPanic(t *testing.T) {
 	out := logs.String()
 	if !strings.Contains(out, "паника при обработке обновления 7") || !strings.Contains(out, "goroutine") {
 		t.Fatalf("в логе нет паники со стеком:\n%s", out)
-	}
-}
-
-// pendingAlbum — накопленный альбом с подписью в состоянии state.
-func pendingAlbum(state MessageState) *MediaMessage {
-	return &MediaMessage{
-		fileid:   []string{"p1"},
-		fullname: "Иван",
-		userid:   testAlbumAuthorID,
-		caption:  "Продам",
-		state:    state,
 	}
 }
 

@@ -7,44 +7,6 @@ import (
 	tgbotapi "github.com/mymmrac/telego"
 )
 
-// Сообщение-подтверждение в личном чате автора.
-const (
-	testConfirmChatID    int64 = 77
-	testConfirmMessageID int64 = 500
-)
-
-// confirmMsg — подтверждение публикации, отвечающее на исходное сообщение reply.
-func confirmMsg(reply *tgbotapi.Message) *tgbotapi.Message {
-	return &tgbotapi.Message{
-		MessageID:      int(testConfirmMessageID),
-		Date:           1,
-		Chat:           tgbotapi.Chat{ID: testConfirmChatID, Type: "private"},
-		ReplyToMessage: reply,
-	}
-}
-
-// textReply — исходное текстовое объявление автора.
-func textReply() *tgbotapi.Message {
-	return &tgbotapi.Message{
-		MessageID: 10,
-		Date:      1,
-		Text:      "Продам 🚲",
-		From:      &tgbotapi.User{ID: 42, FirstName: "Иван"},
-		Entities:  []tgbotapi.MessageEntity{{Type: "bold", Offset: 0, Length: 6}},
-	}
-}
-
-// photoReply — исходное объявление с фото и подписью caption.
-func photoReply(caption string) *tgbotapi.Message {
-	return &tgbotapi.Message{
-		MessageID: 11,
-		Date:      1,
-		Caption:   caption,
-		Photo:     []tgbotapi.PhotoSize{{FileID: "f"}},
-		From:      &tgbotapi.User{ID: 42, FirstName: "Иван"},
-	}
-}
-
 // checkTarget проверяет, что запрос правит сообщение messageID в чате chatID.
 func checkTarget(t *testing.T, what string, body map[string]any, chatID, messageID int64) {
 	t.Helper()
@@ -57,7 +19,7 @@ func checkTarget(t *testing.T, what string, body map[string]any, chatID, message
 // checkConfirm проверяет правку подтверждения: цель, текст и кнопку.
 func checkConfirm(t *testing.T, body map[string]any, wantText, wantButton, wantData string) {
 	t.Helper()
-	checkTarget(t, "подтверждение", body, testConfirmChatID, testConfirmMessageID)
+	checkTarget(t, "подтверждение", body, testAuthorID, testConfirmMessageID)
 	if got := jsonString(t, body, "text"); got != wantText {
 		t.Errorf("текст подтверждения = %q, ожидалось %q", got, wantText)
 	}
@@ -90,7 +52,7 @@ func TestHandleCallbackQuery(t *testing.T) {
 		{name: "нет сообщения", data: "delete_-1001234567890_42", msg: nil, wantAnswer: OriginalMessageMissingMessage},
 		{
 			name: "сообщение недоступно", data: "delete_-1001234567890_42",
-			msg:        &tgbotapi.InaccessibleMessage{Chat: tgbotapi.Chat{ID: testConfirmChatID}, MessageID: int(testConfirmMessageID)},
+			msg:        &tgbotapi.InaccessibleMessage{Chat: tgbotapi.Chat{ID: testAuthorID}, MessageID: testConfirmMessageID},
 			wantAnswer: OriginalMessageMissingMessage,
 		},
 		{name: "исходное сообщение удалено", data: "delete_-1001234567890_42", msg: confirmMsg(nil), wantAnswer: OriginalMessageMissingMessage},
@@ -229,7 +191,7 @@ func TestHandleCallbackQuery(t *testing.T) {
 // в прежнем формате callback data.
 func TestConfirmNewAdCallbackData(t *testing.T) {
 	vb, f := newTestBot(t, nil)
-	vb.confirmNewAd(testConfirmChatID, 10, tgbotapi.Message{MessageID: 42, Chat: tgbotapi.Chat{ID: testChannelID}})
+	vb.confirmNewAd(testAuthorID, 10, tgbotapi.Message{MessageID: 42, Chat: tgbotapi.Chat{ID: testChannelID}})
 
 	sent := f.byMethod("sendMessage")
 	if len(sent) != 1 {

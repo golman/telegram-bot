@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"testing"
@@ -10,66 +9,16 @@ import (
 	tgbotapi "github.com/mymmrac/telego"
 )
 
-// Автор альбома и его личный чат с ботом.
-const (
-	testAlbumAuthorID       int64 = 42
-	testAlbumConfirmMessage int   = 500
-)
-
-// jsonEntities возвращает массив entities из поля key, разобранный
-// в []tgbotapi.MessageEntity, чтобы сравнивать его со структурами.
-func jsonEntities(t *testing.T, m map[string]any, key string) []tgbotapi.MessageEntity {
-	t.Helper()
-	raw, err := json.Marshal(jsonField[[]any](t, m, key))
-	if err != nil {
-		t.Fatalf("поле %q: не удалось сериализовать: %v", key, err)
-	}
-	var out []tgbotapi.MessageEntity
-	if err := json.Unmarshal(raw, &out); err != nil {
-		t.Fatalf("поле %q: не удалось разобрать entities: %v", key, err)
-	}
-	return out
-}
-
-// containsEntity сообщает, есть ли e в списке ents.
-func containsEntity(ents []tgbotapi.MessageEntity, e tgbotapi.MessageEntity) bool {
-	for _, got := range ents {
-		if reflect.DeepEqual(got, e) {
-			return true
-		}
-	}
-	return false
-}
-
-// albumItem — элемент альбома автора: два размера фото и, возможно, подпись.
-func albumItem(id int, photo, caption string, ents []tgbotapi.MessageEntity) *tgbotapi.Message {
-	return &tgbotapi.Message{
-		MessageID:       id,
-		Date:            1,
-		Chat:            tgbotapi.Chat{ID: testAlbumAuthorID, Type: "private"},
-		From:            &tgbotapi.User{ID: testAlbumAuthorID, FirstName: "Иван"},
-		MediaGroupID:    "album",
-		Photo:           []tgbotapi.PhotoSize{{FileID: photo + "-small"}, {FileID: photo + "-big"}},
-		Caption:         caption,
-		CaptionEntities: ents,
-	}
-}
-
 // pressButton нажимает кнопку с callback data data под подтверждением,
 // которое отвечает на reply, и возвращает текст ответа на callback.
 func pressButton(t *testing.T, vb *VBBot, f *fakeAPI, id, data string, reply *tgbotapi.Message) string {
 	t.Helper()
 	before := len(f.byMethod("answerCallbackQuery"))
 	vb.handleCallbackQuery(&tgbotapi.CallbackQuery{
-		ID:   id,
-		From: tgbotapi.User{ID: testAlbumAuthorID, FirstName: "Иван"},
-		Data: data,
-		Message: &tgbotapi.Message{
-			MessageID:      testAlbumConfirmMessage,
-			Date:           1,
-			Chat:           tgbotapi.Chat{ID: testAlbumAuthorID, Type: "private"},
-			ReplyToMessage: reply,
-		},
+		ID:      id,
+		From:    tgbotapi.User{ID: testAuthorID, FirstName: "Иван"},
+		Data:    data,
+		Message: confirmMsg(reply),
 	})
 	answers := f.byMethod("answerCallbackQuery")
 	if len(answers) != before+1 {
@@ -103,7 +52,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 			wantReplyTo: 1,
 			wantCaption: "Продам 🚲" + AuthorSuffix + "Иван",
 			wantEntities: []tgbotapi.MessageEntity{
-				{Type: "text_mention", Offset: 16, Length: 4, User: &tgbotapi.User{ID: testAlbumAuthorID}},
+				{Type: "text_mention", Offset: 16, Length: 4, User: &tgbotapi.User{ID: testAuthorID}},
 				{Type: "bold", Offset: 0, Length: 6},
 			},
 		},
@@ -112,7 +61,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 			wantReplyTo: 0,
 			wantCaption: "Продам 🚲" + AuthorSuffix + "Иван",
 			wantEntities: []tgbotapi.MessageEntity{
-				{Type: "text_mention", Offset: 16, Length: 4, User: &tgbotapi.User{ID: testAlbumAuthorID}},
+				{Type: "text_mention", Offset: 16, Length: 4, User: &tgbotapi.User{ID: testAuthorID}},
 				{Type: "bold", Offset: 0, Length: 6},
 			},
 		},
@@ -122,7 +71,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 			wantReplyTo: 1,
 			wantCaption: "Вторая" + AuthorSuffix + "Иван",
 			wantEntities: []tgbotapi.MessageEntity{
-				{Type: "text_mention", Offset: 13, Length: 4, User: &tgbotapi.User{ID: testAlbumAuthorID}},
+				{Type: "text_mention", Offset: 13, Length: 4, User: &tgbotapi.User{ID: testAuthorID}},
 				{Type: "italic", Offset: 0, Length: 3},
 			},
 		},
@@ -159,8 +108,8 @@ func TestAlbumEndToEnd(t *testing.T) {
 				if jsonString(t, c.body, "text") == MediaGroupDelayMessage {
 					delays++
 				}
-				if got := jsonInt(t, c.body, "chat_id"); got != testAlbumAuthorID {
-					t.Errorf("sendMessage в чат %d, ожидался чат автора %d", got, testAlbumAuthorID)
+				if got := jsonInt(t, c.body, "chat_id"); got != testAuthorID {
+					t.Errorf("sendMessage в чат %d, ожидался чат автора %d", got, testAuthorID)
 				}
 			}
 			// Альбому без подписи публикация не обещается.
@@ -327,8 +276,8 @@ func TestLateAlbumItem(t *testing.T) {
 	if got := jsonString(t, sent[0].body, "text"); got != AlbumItemLateMessage {
 		t.Errorf("автору ушло %q, ожидалось %q", got, AlbumItemLateMessage)
 	}
-	if got := jsonInt(t, sent[0].body, "chat_id"); got != testAlbumAuthorID {
-		t.Errorf("сообщение ушло в чат %d, ожидался чат автора %d", got, testAlbumAuthorID)
+	if got := jsonInt(t, sent[0].body, "chat_id"); got != testAuthorID {
+		t.Errorf("сообщение ушло в чат %d, ожидался чат автора %d", got, testAuthorID)
 	}
 	if len(vb.mediamsg) != 0 {
 		t.Errorf("после окна ожидания осталось медиагрупп: %d", len(vb.mediamsg))

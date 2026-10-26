@@ -16,8 +16,8 @@ func TestEmptySendMediaGroupResponse(t *testing.T) {
 	photo := &tgbotapi.Message{
 		MessageID: 100,
 		Date:      1,
-		Chat:      tgbotapi.Chat{ID: testAlbumAuthorID, Type: "private"},
-		From:      &tgbotapi.User{ID: testAlbumAuthorID, FirstName: "Иван"},
+		Chat:      tgbotapi.Chat{ID: testAuthorID, Type: "private"},
+		From:      &tgbotapi.User{ID: testAuthorID, FirstName: "Иван"},
 		Photo:     []tgbotapi.PhotoSize{{FileID: "p1"}},
 		Caption:   "Продам",
 	}
@@ -43,8 +43,8 @@ func TestEmptySendMediaGroupResponse(t *testing.T) {
 			if len(sent) != 1 {
 				t.Fatalf("sendMessage вызван %d раз, ожидалось одно сообщение об ошибке", len(sent))
 			}
-			if got := jsonInt(t, sent[0].body, "chat_id"); got != testAlbumAuthorID {
-				t.Errorf("сообщение об ошибке ушло в чат %d, ожидался чат автора %d", got, testAlbumAuthorID)
+			if got := jsonInt(t, sent[0].body, "chat_id"); got != testAuthorID {
+				t.Errorf("сообщение об ошибке ушло в чат %d, ожидался чат автора %d", got, testAuthorID)
 			}
 			if _, has := sent[0].body["reply_markup"]; has {
 				t.Error("автору ушло подтверждение с кнопкой, хотя публикация не подтверждена")
@@ -57,7 +57,7 @@ func TestEmptySendMediaGroupResponse(t *testing.T) {
 // (с учётом приписки и пометки «Не актуально»), не отправляется в канал,
 // а автор получает PostTooLongMessage. Ровно на лимите пост публикуется.
 func TestPostTooLong(t *testing.T) {
-	author := &tgbotapi.User{ID: testAlbumAuthorID, FirstName: "Иван"}
+	author := &tgbotapi.User{ID: testAuthorID, FirstName: "Иван"}
 	limit := func(media bool) int {
 		return postTextLimit(postSource{authorID: author.ID, authorName: displayName(*author), media: media})
 	}
@@ -65,7 +65,7 @@ func TestPostTooLong(t *testing.T) {
 		return func(b *VBBot) {
 			b.sendPlainMessage(tgbotapi.Update{Message: &tgbotapi.Message{
 				MessageID: 100, Date: 1, From: author, Text: text,
-				Chat: tgbotapi.Chat{ID: testAlbumAuthorID, Type: "private"},
+				Chat: tgbotapi.Chat{ID: testAuthorID, Type: "private"},
 			}})
 		}
 	}
@@ -74,7 +74,7 @@ func TestPostTooLong(t *testing.T) {
 			b.sendPhotoMessage(tgbotapi.Update{Message: &tgbotapi.Message{
 				MessageID: 100, Date: 1, From: author, Caption: text,
 				Photo: []tgbotapi.PhotoSize{{FileID: "p1"}},
-				Chat:  tgbotapi.Chat{ID: testAlbumAuthorID, Type: "private"},
+				Chat:  tgbotapi.Chat{ID: testAuthorID, Type: "private"},
 			}})
 		}
 	}
@@ -131,23 +131,11 @@ func TestPostTooLong(t *testing.T) {
 			if !jsonField[bool](t, reply, "allow_sending_without_reply") {
 				t.Error("allow_sending_without_reply не включён")
 			}
-			if got := jsonInt(t, sent[0].body, "chat_id"); got != testAlbumAuthorID {
-				t.Errorf("сообщение ушло в чат %d, ожидался чат автора %d", got, testAlbumAuthorID)
+			if got := jsonInt(t, sent[0].body, "chat_id"); got != testAuthorID {
+				t.Errorf("сообщение ушло в чат %d, ожидался чат автора %d", got, testAuthorID)
 			}
 		})
 	}
-}
-
-// channelCalls считает вызовы метода m с chat_id канала.
-func channelCalls(t *testing.T, f *fakeAPI, m string) int {
-	t.Helper()
-	n := 0
-	for _, c := range f.byMethod(m) {
-		if jsonInt(t, c.body, "chat_id") == testChannelID {
-			n++
-		}
-	}
-	return n
 }
 
 func TestPostTooLongText(t *testing.T) {
@@ -171,8 +159,8 @@ func TestPostTooLongText(t *testing.T) {
 // текст, а описание ошибки Telegram попадает только в лог.
 func TestPublishErrorHidesAPIText(t *testing.T) {
 	const apiDesc = "Bad Request: chat not found"
-	author := &tgbotapi.User{ID: testAlbumAuthorID, FirstName: "Иван"}
-	chat := tgbotapi.Chat{ID: testAlbumAuthorID, Type: "private"}
+	author := &tgbotapi.User{ID: testAuthorID, FirstName: "Иван"}
+	chat := tgbotapi.Chat{ID: testAuthorID, Type: "private"}
 	tests := []struct {
 		name   string
 		method string
@@ -204,7 +192,7 @@ func TestPublishErrorHidesAPIText(t *testing.T) {
 			// Пост опубликован, но подтверждение с кнопкой не ушло.
 			name: "подтверждение", method: "sendMessage",
 			send: func(b *VBBot) {
-				b.confirmNewAd(testAlbumAuthorID, 100, tgbotapi.Message{MessageID: 900, Chat: tgbotapi.Chat{ID: testChannelID}})
+				b.confirmNewAd(testAuthorID, 100, tgbotapi.Message{MessageID: 900, Chat: tgbotapi.Chat{ID: testChannelID}})
 			},
 			wantTexts: []string{AdPublishedMessage, ConfirmFailedMessage},
 		},
@@ -212,7 +200,7 @@ func TestPublishErrorHidesAPIText(t *testing.T) {
 			// Служебное сообщение автору не ушло: второе сообщение тоже не дойдёт,
 			// поэтому ошибка только логируется.
 			name: "служебное сообщение", method: "sendMessage",
-			send:      func(b *VBBot) { b.sendTextMessage(NotSubscribedMessage, testAlbumAuthorID) },
+			send:      func(b *VBBot) { b.sendTextMessage(NotSubscribedMessage, testAuthorID) },
 			wantTexts: []string{NotSubscribedMessage},
 		},
 	}
@@ -225,7 +213,7 @@ func TestPublishErrorHidesAPIText(t *testing.T) {
 
 			var texts []string
 			for _, c := range f.byMethod("sendMessage") {
-				if jsonInt(t, c.body, "chat_id") == testAlbumAuthorID {
+				if jsonInt(t, c.body, "chat_id") == testAuthorID {
 					texts = append(texts, jsonString(t, c.body, "text"))
 				}
 			}

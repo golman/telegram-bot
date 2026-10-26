@@ -10,7 +10,7 @@ import (
 // TestMediaMessageAddItemCaption проверяет, что подпись альбома, её entities
 // и ID сообщения для подтверждения берутся с того элемента, где есть подпись.
 func TestMediaMessageAddItemCaption(t *testing.T) {
-	author := &tgbotapi.User{ID: 42, FirstName: "Иван"}
+	author := &tgbotapi.User{ID: testAuthorID, FirstName: "Иван"}
 	// photo возвращает размеры одного фото по возрастанию, как их присылает Telegram.
 	photo := func(prefix string) []tgbotapi.PhotoSize {
 		return []tgbotapi.PhotoSize{
@@ -93,22 +93,22 @@ func TestMediaMessageAddItemCaption(t *testing.T) {
 			mm.addItem(m2)
 
 			if mm.caption != tt.wantCaption {
-				t.Errorf("caption = %q, want %q", mm.caption, tt.wantCaption)
+				t.Errorf("подпись = %q, ожидалось %q", mm.caption, tt.wantCaption)
 			}
 			if !reflect.DeepEqual(mm.entities, tt.wantEntities) {
-				t.Errorf("entities = %+v, want %+v", mm.entities, tt.wantEntities)
+				t.Errorf("entities = %+v, ожидалось %+v", mm.entities, tt.wantEntities)
 			}
 			if mm.originalmessageid != tt.wantOrigMsgID {
-				t.Errorf("originalmessageid = %d, want %d", mm.originalmessageid, tt.wantOrigMsgID)
+				t.Errorf("originalmessageid = %d, ожидалось %d", mm.originalmessageid, tt.wantOrigMsgID)
 			}
 			if want := []string{"p1-big", "p2-big"}; !reflect.DeepEqual(mm.fileid, want) {
-				t.Errorf("fileid = %v, want %v", mm.fileid, want)
+				t.Errorf("fileid = %v, ожидалось %v", mm.fileid, want)
 			}
 			if mm.state != MessageStateInit {
-				t.Errorf("state = %v, want %v", mm.state, MessageStateInit)
+				t.Errorf("состояние = %v, ожидалось %v", mm.state, MessageStateInit)
 			}
-			if mm.userid != 42 || mm.fullname != "Иван" {
-				t.Errorf("автор = (%d, %q), want (42, %q)", mm.userid, mm.fullname, "Иван")
+			if mm.userid != testAuthorID || mm.fullname != "Иван" {
+				t.Errorf("автор = (%d, %q), ожидалось (%d, %q)", mm.userid, mm.fullname, testAuthorID, "Иван")
 			}
 		})
 	}

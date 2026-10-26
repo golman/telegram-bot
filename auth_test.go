@@ -7,22 +7,14 @@ import (
 	tgbotapi "github.com/mymmrac/telego"
 )
 
-// authUserID — пользователь, который пишет боту в личный чат.
-const authUserID int64 = 42
-
 // authUpdate — обычное текстовое сообщение из личного чата пользователя.
 func authUpdate() tgbotapi.Update {
 	return tgbotapi.Update{Message: &tgbotapi.Message{
 		MessageID: 10,
-		From:      &tgbotapi.User{ID: authUserID, FirstName: "Иван"},
-		Chat:      tgbotapi.Chat{ID: authUserID, Type: "private"},
+		From:      &tgbotapi.User{ID: testAuthorID, FirstName: "Иван"},
+		Chat:      tgbotapi.Chat{ID: testAuthorID, Type: "private"},
 		Text:      "Продам велосипед",
 	}}
-}
-
-// chatMemberJSON — ответ getChatMember для пользователя authUserID со статусом status.
-func chatMemberJSON(status string) string {
-	return `{"status":"` + status + `","user":{"id":42,"is_bot":false,"first_name":"Иван"}}`
 }
 
 // wantMessage — ожидаемый sendMessage: адресат, начало текста и наличие кнопки.
@@ -36,7 +28,7 @@ func TestHandleUpdateAuth(t *testing.T) {
 	// Пост в канале и подтверждение автору — признаки успешной публикации.
 	published := []wantMessage{
 		{chat: testChannelID, textPrefix: "Продам велосипед" + AuthorSuffix},
-		{chat: authUserID, textPrefix: "Объявление опубликовано.", button: true},
+		{chat: testAuthorID, textPrefix: "Объявление опубликовано.", button: true},
 	}
 	tests := []struct {
 		name        string
@@ -55,7 +47,7 @@ func TestHandleUpdateAuth(t *testing.T) {
 			authEnabled:    true,
 			fail:           map[string]string{"getChatMember": "Bad Request: chat not found"},
 			wantMemberCall: 1,
-			want:           []wantMessage{{chat: authUserID, textPrefix: AuthCheckFailedMessage}},
+			want:           []wantMessage{{chat: testAuthorID, textPrefix: AuthCheckFailedMessage}},
 			wantLog:        []string{"проверка подписки пользователя 42: ", "chat not found"},
 		},
 		{
@@ -63,7 +55,7 @@ func TestHandleUpdateAuth(t *testing.T) {
 			authEnabled:    true,
 			member:         chatMemberJSON("left"),
 			wantMemberCall: 1,
-			want:           []wantMessage{{chat: authUserID, textPrefix: NotSubscribedMessage}},
+			want:           []wantMessage{{chat: testAuthorID, textPrefix: NotSubscribedMessage}},
 		},
 		{
 			name:           "участник канала",

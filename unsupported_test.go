@@ -7,28 +7,6 @@ import (
 	tgbotapi "github.com/mymmrac/telego"
 )
 
-// authorTexts возвращает тексты всех sendMessage в личный чат автора по порядку.
-func authorTexts(t *testing.T, f *fakeAPI) []string {
-	t.Helper()
-	var texts []string
-	for _, c := range f.byMethod("sendMessage") {
-		if jsonInt(t, c.body, "chat_id") == testAlbumAuthorID {
-			texts = append(texts, jsonString(t, c.body, "text"))
-		}
-	}
-	return texts
-}
-
-// authorMessage — сообщение автора в личном чате с ботом.
-func authorMessage(id int) *tgbotapi.Message {
-	return &tgbotapi.Message{
-		MessageID: id,
-		Date:      1,
-		Chat:      tgbotapi.Chat{ID: testAlbumAuthorID, Type: "private"},
-		From:      &tgbotapi.User{ID: testAlbumAuthorID, FirstName: "Иван"},
-	}
-}
-
 // TestUnsupportedMessage: всё, кроме текста и фото, отклоняется одним
 // понятным сообщением, а в канал ничего не уходит.
 func TestUnsupportedMessage(t *testing.T) {
@@ -91,14 +69,6 @@ func TestSupportedMessagesStillPublished(t *testing.T) {
 			}
 		})
 	}
-}
-
-// albumVideo — видео из того же альбома, что albumItem.
-func albumVideo(id int, caption string) *tgbotapi.Message {
-	m := albumItem(id, "", caption, nil)
-	m.Photo = nil
-	m.Video = &tgbotapi.Video{FileID: "v"}
-	return m
 }
 
 // TestAlbumWithUnsupportedItems: видео в альбоме не публикуются, но подпись

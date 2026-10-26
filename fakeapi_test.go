@@ -193,3 +193,42 @@ func onlyButton(t *testing.T, body map[string]any) map[string]any {
 	}
 	return jsonIndex[map[string]any](t, row, 0)
 }
+
+// jsonEntities возвращает массив entities из поля key, разобранный
+// в []tgbotapi.MessageEntity, чтобы сравнивать его со структурами.
+func jsonEntities(t *testing.T, m map[string]any, key string) []tgbotapi.MessageEntity {
+	t.Helper()
+	raw, err := json.Marshal(jsonField[[]any](t, m, key))
+	if err != nil {
+		t.Fatalf("поле %q: не удалось сериализовать: %v", key, err)
+	}
+	var out []tgbotapi.MessageEntity
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatalf("поле %q: не удалось разобрать entities: %v", key, err)
+	}
+	return out
+}
+
+// authorTexts возвращает тексты всех sendMessage в личный чат автора по порядку.
+func authorTexts(t *testing.T, f *fakeAPI) []string {
+	t.Helper()
+	var texts []string
+	for _, c := range f.byMethod("sendMessage") {
+		if jsonInt(t, c.body, "chat_id") == testAuthorID {
+			texts = append(texts, jsonString(t, c.body, "text"))
+		}
+	}
+	return texts
+}
+
+// channelCalls считает вызовы метода m с chat_id канала.
+func channelCalls(t *testing.T, f *fakeAPI, m string) int {
+	t.Helper()
+	n := 0
+	for _, c := range f.byMethod(m) {
+		if jsonInt(t, c.body, "chat_id") == testChannelID {
+			n++
+		}
+	}
+	return n
+}
