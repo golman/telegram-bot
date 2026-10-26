@@ -130,20 +130,60 @@ func (vbbot *VBBot) publishAlbum(id string, mm *MediaMessage) {
 	vbbot.sendMediaGroup(mm)
 }
 
-// addAlbumItem добавляет элемент альбома в накопитель. Первый элемент создаёт
-// накопитель и предупреждает автора о задержке публикации.
-func (vbbot *VBBot) addAlbumItem(msg *tgbotapi.Message) {
+// admit проверяет подписку автора и фильтры. Если сообщение не принято,
+// автор получает объяснение и возвращается false.
+func (vbbot *VBBot) admit(update tgbotapi.Update) bool {
+	chatID := update.Message.Chat.ID
+	subscribed, err := vbbot.authByChannel(update)
+	if err != nil {
+		// Сырой текст ошибки API пользователю не показывается.
+		log.Printf("проверка подписки пользователя %d: %v", update.Message.From.ID, err)
+		vbbot.sendTextMessage(AuthCheckFailedMessage, chatID)
+		return false
+	}
+	if !subscribed {
+		vbbot.sendTextMessage(NotSubscribedMessage, chatID)
+		return false
+	}
+	if vbbot.runFilter(update) {
+		vbbot.sendTextMessage(FiltersFailedMessage, chatID)
+		return false
+	}
+	return true
+}
+
+// addAlbumItem добавляет элемент альбома в накопитель. Подписка и фильтры
+// проверяются один раз, на первом пришедшем элементе: при отказе автор
+// получает одно сообщение, а накопитель помечается отклонённым и молча
+// отбрасывает остальные элементы, пока не истечёт albumLateWindowTicks.
+// Видео и файлы собираются вместе с фото, чтобы не потерять подпись,
+// но не публикуются. «Будет отправлено» обещается, как только у альбома
+// есть и фото, и подпись.
+func (vbbot *VBBot) addAlbumItem(update tgbotapi.Update) {
+	msg := update.Message
 	mm, ok := vbbot.mediamsg[msg.MediaGroupID]
 	if !ok {
 		mm = newMediaMessage(msg)
 		vbbot.mediamsg[msg.MediaGroupID] = mm
-		vbbot.sendTextMessage(MediaGroupDelayMessage, msg.Chat.ID)
+		if !vbbot.admit(update) {
+			mm.rejected = true
+			mm.state = MessageStateToDelete
+			mm.ticksLeft = albumLateWindowTicks
+			return
+		}
+	}
+	if mm.rejected {
+		return
 	}
 	if mm.state == MessageStateToDelete {
 		vbbot.rejectLateAlbumItem(mm, msg)
 		return
 	}
 	mm.addItem(msg)
+	if !mm.promised && mm.caption != "" && len(mm.fileid) > 0 {
+		mm.promised = true
+		vbbot.sendTextMessage(MediaGroupDelayMessage, msg.Chat.ID)
+	}
 }
 
 // rejectLateAlbumItem обрабатывает фото альбома, который уже отправлен:
@@ -228,30 +268,17 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 		log.Printf("сообщение %d в чате %d без автора, пропущено", update.Message.MessageID, update.Message.Chat.ID)
 		return
 	}
-	subscribed, err := vbbot.authByChannel(update)
-	if err != nil {
-		// Сырой текст ошибки API пользователю не показывается.
-		log.Printf("проверка подписки пользователя %d: %v", update.Message.From.ID, err)
-		vbbot.sendTextMessage(AuthCheckFailedMessage, update.Message.Chat.ID)
-		return
-	}
-	if !subscribed {
-		vbbot.sendTextMessage(NotSubscribedMessage, update.Message.Chat.ID)
-		return
-	}
-	if vbbot.runFilter(update) {
-		vbbot.sendTextMessage(FiltersFailedMessage, update.Message.Chat.ID)
-		return
-	}
 	msg := update.Message
-	// Принимаются только текст и фото. Элементы альбома с видео или файлами
-	// собираются вместе с фото, чтобы не потерять подпись, но не публикуются.
-	supported := msg.Photo != nil || msg.Text != ""
+	// Элементы альбома проверяются один раз на весь альбом, в addAlbumItem.
 	if msg.MediaGroupID != "" {
-		vbbot.addAlbumItem(msg)
+		vbbot.addAlbumItem(update)
 		return
 	}
-	if !supported {
+	if !vbbot.admit(update) {
+		return
+	}
+	// Принимаются только текст и фото.
+	if msg.Photo == nil && msg.Text == "" {
 		log.Printf("сообщение %d пользователя %d не текст и не фото, отклонено", msg.MessageID, msg.Chat.ID)
 		vbbot.sendTextMessage(UnsupportedMessage, msg.Chat.ID)
 		return

@@ -160,22 +160,24 @@ func TestAlbumEndToEnd(t *testing.T) {
 					t.Errorf("sendMessage в чат %d, ожидался чат автора %d", got, testAlbumAuthorID)
 				}
 			}
-			if delays != 1 {
-				t.Errorf("%q отправлено %d раз, ожидался ровно один", MediaGroupDelayMessage, delays)
+			// Альбому без подписи публикация не обещается.
+			wantDelays := 1
+			if tt.wantReplyTo < 0 {
+				wantDelays = 0
+			}
+			if delays != wantDelays {
+				t.Errorf("%q отправлено %d раз, ожидалось %d", MediaGroupDelayMessage, delays, wantDelays)
 			}
 
 			if tt.wantReplyTo < 0 {
 				if got := f.byMethod("sendMediaGroup"); len(got) != 0 {
 					t.Errorf("sendMediaGroup вызван %d раз, альбом без подписи публиковаться не должен", len(got))
 				}
-				if len(sent) != 2 {
-					t.Fatalf("sendMessage вызван %d раз, ожидалось 2", len(sent))
+				if len(sent) != 1 {
+					t.Fatalf("sendMessage вызван %d раз, ожидался один отказ", len(sent))
 				}
-				if got := jsonString(t, sent[0].body, "text"); got != MediaGroupDelayMessage {
-					t.Errorf("первое сообщение автору = %q, ожидалось %q", got, MediaGroupDelayMessage)
-				}
-				if got, want := jsonString(t, sent[1].body, "text"), "Сообщение не может быть пустым"; got != want {
-					t.Errorf("второе сообщение автору = %q, ожидалось %q", got, want)
+				if got, want := jsonString(t, sent[0].body, "text"), "Сообщение не может быть пустым"; got != want {
+					t.Errorf("сообщение автору = %q, ожидалось %q", got, want)
 				}
 				return
 			}
@@ -350,5 +352,91 @@ func TestSentAlbumKeptForLateWindow(t *testing.T) {
 	}
 	if _, ok := vb.mediamsg["album"]; ok {
 		t.Fatalf("альбом не удалён через %d шагов после отправки", albumLateWindowTicks)
+	}
+}
+
+// TestAlbumAuthOnce: подписка проверяется один раз на альбом, а не на каждое
+// фото. Отказ приходит автору одним сообщением, остальные фото альбома
+// молча отбрасываются; временный сбой проверки не публикует альбом без части фото.
+func TestAlbumAuthOnce(t *testing.T) {
+	tests := []struct {
+		name          string
+		fail          map[string]string
+		member        string
+		wantPublished bool
+		wantTexts     []string
+	}{
+		{
+			name: "участник канала", member: chatMemberJSON("member"),
+			wantPublished: true, wantTexts: []string{MediaGroupDelayMessage, AdPublishedMessage},
+		},
+		{
+			name: "не участник канала", member: chatMemberJSON("left"),
+			wantTexts: []string{NotSubscribedMessage},
+		},
+		{
+			name: "сбой проверки подписки", fail: map[string]string{"getChatMember": "Bad Request: chat not found"},
+			wantTexts: []string{AuthCheckFailedMessage},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			captureLog(t)
+			b, f := newTestBot(t, tt.fail)
+			b.mediamsg = map[string]*MediaMessage{}
+			b.cfg.authEnabled = true
+			if tt.member != "" {
+				f.respond("getChatMember", tt.member)
+			}
+
+			// Подпись на втором фото, как часто бывает в клиентах Telegram.
+			for i, m := range []*tgbotapi.Message{
+				albumItem(100, "p1", "", nil),
+				albumItem(101, "p2", "Продам", nil),
+				albumItem(102, "p3", "", nil),
+			} {
+				b.handleUpdate(tgbotapi.Update{UpdateID: i, Message: m})
+			}
+			for i := 0; i < 3; i++ {
+				b.tick()
+			}
+
+			if got := len(f.byMethod("getChatMember")); got != 1 {
+				t.Errorf("getChatMember вызван %d раз, ожидался один на альбом", got)
+			}
+			groups := f.byMethod("sendMediaGroup")
+			if tt.wantPublished {
+				if len(groups) != 1 {
+					t.Fatalf("sendMediaGroup вызван %d раз, ожидался один", len(groups))
+				}
+				if media := jsonField[[]any](t, groups[0].body, "media"); len(media) != 3 {
+					t.Errorf("в альбоме %d фото, ожидалось 3", len(media))
+				}
+			} else if len(groups) != 0 {
+				t.Errorf("sendMediaGroup вызван %d раз, альбом публиковаться не должен", len(groups))
+			}
+			if got := authorTexts(t, f); !reflect.DeepEqual(got, tt.wantTexts) {
+				t.Errorf("автору ушли %q, ожидалось %q", got, tt.wantTexts)
+			}
+		})
+	}
+}
+
+// TestAlbumDelayPromise: «будет отправлено» обещается, только когда у альбома
+// есть и фото, и подпись. Альбом без подписи сразу получает отказ при отправке,
+// без обещания перед ним.
+func TestAlbumDelayPromise(t *testing.T) {
+	captureLog(t)
+	b, f := newTestBot(t, nil)
+	b.mediamsg = map[string]*MediaMessage{}
+	b.handleUpdate(tgbotapi.Update{Message: albumItem(100, "p1", "", nil)})
+	b.handleUpdate(tgbotapi.Update{Message: albumItem(101, "p2", "", nil)})
+	if got := authorTexts(t, f); len(got) != 0 {
+		t.Errorf("до подписи автору ушли %q, ожидалось ничего", got)
+	}
+	b.tick()
+	b.tick()
+	if got, want := authorTexts(t, f), []string{"Сообщение не может быть пустым"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("автору ушли %q, ожидалось %q", got, want)
 	}
 }

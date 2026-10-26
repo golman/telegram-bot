@@ -118,9 +118,10 @@ func TestAlbumWithUnsupportedItems(t *testing.T) {
 			wantTexts: []string{MediaGroupDelayMessage, AdPublishedMessage, AlbumSkippedMessage},
 		},
 		{
-			name:      "только видео",
-			items:     []*tgbotapi.Message{albumVideo(100, "Продам"), albumVideo(101, "")},
-			wantTexts: []string{MediaGroupDelayMessage, UnsupportedMessage},
+			name:  "только видео",
+			items: []*tgbotapi.Message{albumVideo(100, "Продам"), albumVideo(101, "")},
+			// Без фото публикация не обещается: сразу один отказ.
+			wantTexts: []string{UnsupportedMessage},
 		},
 	}
 	for _, tt := range tests {

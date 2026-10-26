@@ -17,6 +17,10 @@ type MediaMessage struct {
 	lateNotified bool
 	// skipped — сколько элементов альбома не фото (видео, файлы); они не публикуются.
 	skipped int
+	// rejected — автор не прошёл проверку подписки или фильтры, элементы отбрасываются.
+	rejected bool
+	// promised — автору уже отправлено MediaGroupDelayMessage.
+	promised bool
 }
 
 type MessageState int
