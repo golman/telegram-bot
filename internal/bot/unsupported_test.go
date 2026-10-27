@@ -37,7 +37,7 @@ func TestUnsupportedMessage(t *testing.T) {
 			if got, want := authorTexts(t, f), []string{unsupportedMessage}; !reflect.DeepEqual(got, want) {
 				t.Errorf("автору ушли %q, ожидалось %q", got, want)
 			}
-			if n := channelCalls(t, f, "sendMessage") + channelCalls(t, f, "sendMediaGroup"); n != 0 {
+			if n := channelCalls(t, f, "sendMessage") + channelCalls(t, f, "sendMediaGroup") + channelCalls(t, f, "sendPhoto"); n != 0 {
 				t.Errorf("в канал ушло %d запросов, ожидалось 0", n)
 			}
 		})
@@ -52,7 +52,7 @@ func TestSupportedMessagesStillPublished(t *testing.T) {
 		method string
 	}{
 		{"текст", func(m *telego.Message) { m.Text = "Продам" }, "sendMessage"},
-		{"фото", func(m *telego.Message) { m.Photo = []telego.PhotoSize{{FileID: "p"}}; m.Caption = "Продам" }, "sendMediaGroup"},
+		{"фото", func(m *telego.Message) { m.Photo = []telego.PhotoSize{{FileID: "p"}}; m.Caption = "Продам" }, "sendPhoto"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

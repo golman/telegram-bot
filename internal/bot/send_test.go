@@ -31,34 +31,73 @@ func TestPhotoWithoutCaption(t *testing.T) {
 	}
 }
 
-// TestEmptySendMediaGroupResponse: если Bot API ответил на sendMediaGroup
-// пустым массивом, бот не паникует, а логирует ошибку, сообщает автору
-// о неудаче и не отправляет подтверждение с кнопкой.
-func TestEmptySendMediaGroupResponse(t *testing.T) {
-	photo := &telego.Message{
-		MessageID: 100,
-		Date:      1,
-		Chat:      telego.Chat{ID: testAuthorID, Type: "private"},
-		From:      &telego.User{ID: testAuthorID, FirstName: "Иван"},
-		Photo:     []telego.PhotoSize{{FileID: "p1"}},
-		Caption:   "Продам",
+// TestSinglePhotoViaSendPhoto: одиночное фото публикуется одним sendPhoto
+// (самый большой размер, подпись с припиской автора), а кнопка
+// подтверждения ведёт на пост из ответа sendPhoto.
+func TestSinglePhotoViaSendPhoto(t *testing.T) {
+	testutil.CaptureLog(t)
+	b, f := newTestBot(t, nil)
+	m := authorMessage(100)
+	m.Photo = []telego.PhotoSize{{FileID: "p-small"}, {FileID: "p-big"}}
+	m.Caption = "Продам"
+
+	b.sendPhotoMessage(telego.Update{Message: m})
+
+	if n := len(f.byMethod("sendMediaGroup")); n != 0 {
+		t.Errorf("получено sendMediaGroup %d раз, ожидалось 0", n)
 	}
+	sent := f.byMethod("sendPhoto")
+	if len(sent) != 1 {
+		t.Fatalf("получено sendPhoto %d раз, ожидался один", len(sent))
+	}
+	body := sent[0].body
+	if got := jsonInt(t, body, "chat_id"); got != testChannelID {
+		t.Errorf("получен chat_id %d, ожидался канал %d", got, testChannelID)
+	}
+	if got := jsonString(t, body, "photo"); got != "p-big" {
+		t.Errorf("получено фото %q, ожидалось самое большое p-big", got)
+	}
+	if got, want := jsonString(t, body, "caption"), "Продам"+post.AuthorSuffix+"Иван"; got != want {
+		t.Errorf("получена подпись %q, ожидалась %q", got, want)
+	}
+	mention := telego.MessageEntity{Type: telego.EntityTypeTextMention, Offset: 12, Length: 4, User: &telego.User{ID: testAuthorID}}
+	if ents := jsonEntities(t, body, "caption_entities"); !containsEntity(ents, mention) {
+		t.Errorf("получены caption_entities %+v, ожидалось упоминание автора %+v", ents, mention)
+	}
+
+	confirm := f.byMethod("sendMessage")
+	if len(confirm) != 1 {
+		t.Fatalf("получено sendMessage %d раз, ожидалось одно подтверждение", len(confirm))
+	}
+	want := fmt.Sprintf("delete_%d_%d", testChannelID, testPhotoMessageID)
+	if got := jsonString(t, onlyButton(t, confirm[0].body), "callback_data"); got != want {
+		t.Errorf("получены callback_data %q, ожидались %q", got, want)
+	}
+}
+
+// TestEmptySendResponse: если Bot API ответил на sendMediaGroup пустым
+// массивом или на sendPhoto пустым результатом, бот не паникует, а логирует
+// ошибку, сообщает автору о неудаче и не отправляет подтверждение с кнопкой.
+func TestEmptySendResponse(t *testing.T) {
+	photo := authorMessage(100)
+	photo.Photo = []telego.PhotoSize{{FileID: "p1"}}
+	photo.Caption = "Продам"
 	tests := []struct {
-		name string
-		send func(b *Bot)
+		name, method, result string
+		send                 func(b *Bot)
 	}{
-		{"альбом", func(b *Bot) { b.sendMediaGroup(pendingAlbum(albumCollecting)) }},
-		{"одно фото", func(b *Bot) { b.sendPhotoMessage(telego.Update{Message: photo}) }},
+		{"альбом", "sendMediaGroup", "[]", func(b *Bot) { b.sendMediaGroup(pendingAlbum(albumCollecting)) }},
+		{"одно фото", "sendPhoto", "null", func(b *Bot) { b.sendPhotoMessage(telego.Update{Message: photo}) }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logs := testutil.CaptureLog(t)
 			b, f := newTestBot(t, nil)
-			f.respond("sendMediaGroup", "[]")
+			f.respond(tt.method, tt.result)
 
 			tt.send(b)
 
-			if out := logs.String(); !strings.Contains(out, "пустой ответ на sendMediaGroup") {
+			if out := logs.String(); !strings.Contains(out, "пустой ответ на "+tt.method) {
 				t.Errorf("в логе нет ошибки о пустом ответе:\n%s", out)
 			}
 			sent := f.byMethod("sendMessage")
@@ -115,7 +154,7 @@ func TestPostTooLong(t *testing.T) {
 		publish string // метод публикации в канал
 	}{
 		{"текст", false, plain, "sendMessage"},
-		{"одно фото", true, photo, "sendMediaGroup"},
+		{"одно фото", true, photo, "sendPhoto"},
 		{"альбом", true, sendAlbum, "sendMediaGroup"},
 	}
 	for _, tt := range tests {
@@ -198,7 +237,7 @@ func TestPublishErrorHidesAPIText(t *testing.T) {
 			wantTexts: []string{publishFailedMessage},
 		},
 		{
-			name: "одно фото", method: "sendMediaGroup",
+			name: "одно фото", method: "sendPhoto",
 			send: func(b *Bot) {
 				b.sendPhotoMessage(telego.Update{Message: &telego.Message{MessageID: 100, Date: 1, From: author, Chat: chat,
 					Caption: "Продам", Photo: []telego.PhotoSize{{FileID: "p1"}}}})

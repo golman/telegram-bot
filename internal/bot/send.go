@@ -15,6 +15,9 @@ import (
 // и ID поста для кнопки «Не актуально» взять неоткуда.
 var errEmptyMediaGroupResponse = errors.New("пустой ответ на sendMediaGroup")
 
+// errEmptyPhotoResponse — Bot API ответил на sendPhoto без сообщения.
+var errEmptyPhotoResponse = errors.New("пустой ответ на sendPhoto")
+
 func (b *Bot) sendMediaGroup(a *album) {
 	if len(a.fileIDs) == 0 {
 		// В альбоме только видео или файлы.
@@ -89,30 +92,22 @@ func (b *Bot) sendPhotoMessage(update telego.Update) {
 		return
 	}
 	text, ents := post.Build(src, false)
-	msg := telego.SendMediaGroupParams{
-		ChatID: telego.ChatID{ID: b.channelID},
-		Media: []telego.InputMedia{
-			&telego.InputMediaPhoto{
-				Type: "photo",
-				Media: telego.InputFile{
-					FileID: photo.FileID,
-				},
-				Caption:         text,
-				CaptionEntities: ents,
-			},
-		},
+	msg := telego.SendPhotoParams{
+		ChatID:          telego.ChatID{ID: b.channelID},
+		Photo:           telego.InputFile{FileID: photo.FileID},
+		Caption:         text,
+		CaptionEntities: ents,
 	}
 
-	// Отправка сообщения с фотографией и подписью
-	sentMsg, err := b.client.SendMediaGroup(context.Background(), &msg)
-	if err == nil && len(sentMsg) == 0 {
-		err = errEmptyMediaGroupResponse
+	sent, err := b.client.SendPhoto(context.Background(), &msg)
+	if err == nil && sent == nil {
+		err = errEmptyPhotoResponse
 	}
 	if err != nil {
 		b.reportPublishError(err, update.Message.Chat.ID)
-	} else {
-		b.confirmNewAd(update.Message.From.ID, update.Message.MessageID, sentMsg[0])
+		return
 	}
+	b.confirmNewAd(update.Message.From.ID, update.Message.MessageID, *sent)
 }
 
 // sendPlainMessage публикует текстовое объявление; пост собирается

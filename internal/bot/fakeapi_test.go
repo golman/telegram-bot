@@ -22,6 +22,10 @@ const testChannelID int64 = -1001234567890
 // который фейковый API возвращает на sendMediaGroup.
 const testMediaGroupMessageID int64 = 900
 
+// testPhotoMessageID — ID поста с одиночным фото, который фейковый API
+// возвращает на sendPhoto.
+const testPhotoMessageID int64 = 901
+
 // apiCall — один запрос к фейковому Bot API: имя метода и тело в JSON.
 type apiCall struct {
 	method string
@@ -94,6 +98,9 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Bot API отвечает на sendMediaGroup массивом сообщений, а не объектом.
 		_, _ = w.Write([]byte(fmt.Sprintf(`{"ok":true,"result":[{"message_id":%d,"date":1,"chat":{"id":%d,"type":"channel"}}]}`,
 			testMediaGroupMessageID, testChannelID)))
+	case "sendPhoto":
+		_, _ = w.Write([]byte(fmt.Sprintf(`{"ok":true,"result":{"message_id":%d,"date":1,"chat":{"id":%d,"type":"channel"}}}`,
+			testPhotoMessageID, testChannelID)))
 	default:
 		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":1,"date":1,"chat":{"id":1,"type":"private"}}}`))
 	}
