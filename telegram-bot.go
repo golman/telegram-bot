@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -15,6 +16,7 @@ import (
 	tgbotapi "github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/config"
+	"github.com/golman/telegram-bot/internal/logging"
 	"github.com/golman/telegram-bot/internal/tgapi"
 )
 
@@ -37,8 +39,28 @@ func fatal(msg string, args ...any) {
 	os.Exit(1)
 }
 
+// initLogging читает конфиг, настраивает по нему логи и пишет в них
+// предупреждения конфига — уже после открытия файла, чтобы они попали и туда.
+// Возвращает ошибку настройки логов или ошибку config.Load (нет BOT_TOKEN
+// или CHANNEL_ID); во втором случае логи всё равно настроены.
+func initLogging(getenv func(string) string, stdout io.Writer) (config.Config, error) {
+	cfg, warnings, loadErr := config.Load(getenv)
+	setupErr := logging.Setup(cfg.Log, stdout)
+	// При ошибке настройки файла предупреждения уходят хотя бы в stdout
+	// (туда логи направил logging.Bootstrap).
+	for _, w := range warnings {
+		slog.Warn("некорректная переменная окружения, используется значение по умолчанию",
+			"var", w.Var, "value", w.Value, "default", w.Default)
+	}
+	if setupErr != nil {
+		return cfg, setupErr
+	}
+	return cfg, loadErr
+}
+
 func main() {
-	cfg, err := initLogging(os.Getenv)
+	logging.Bootstrap(os.Stdout)
+	cfg, err := initLogging(os.Getenv, os.Stdout)
 	if errors.Is(err, config.ErrNoToken) || errors.Is(err, config.ErrNoChannel) {
 		fatal(err.Error())
 	}
@@ -46,7 +68,7 @@ func main() {
 		fatal("не удалось настроить логирование", "err", err)
 	}
 
-	opts := append(botOptions(cfg.Token, cfg.Log.Debug), tgbotapi.WithAPICaller(tgapi.NewCaller()))
+	opts := append(logging.BotOptions(cfg.Token, cfg.Log.Debug), tgbotapi.WithAPICaller(tgapi.NewCaller()))
 	bot, err := tgbotapi.NewBot(cfg.Token, opts...)
 	if err != nil {
 		fatal("не удалось создать клиент Bot API", "err", err)
