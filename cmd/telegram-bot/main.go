@@ -55,6 +55,14 @@ func runWith(parent context.Context, getenv func(string) string, stdout io.Write
 		slog.Error("не удалось создать клиент Bot API", "err", err)
 		return 1
 	}
+	// Неверный или отозванный токен проверяется сразу: в long polling telego
+	// повторял бы ошибку 401 каждые 8 секунд, и бот «работал» бы вечно.
+	me, err := client.GetMe(context.Background())
+	if err != nil {
+		slog.Error("Telegram не принял токен бота", "err", err)
+		return 1
+	}
+	slog.Info("бот подключён к Telegram", "username", me.Username)
 
 	// SIGINT/SIGTERM отменяют ctx: telego прекращает long polling и закрывает
 	// канал обновлений, после чего Run дообрабатывает буфер и выходит.

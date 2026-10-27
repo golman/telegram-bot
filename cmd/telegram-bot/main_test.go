@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"sync"
@@ -253,6 +254,8 @@ func (a *runAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			time.Sleep(20 * time.Millisecond)
 			_, _ = io.WriteString(w, `{"ok":true,"result":[]}`)
 		}
+	case "getMe":
+		_, _ = io.WriteString(w, `{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"Бот","username":"test_bot"}}`)
 	case "sendMessage":
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -282,4 +285,51 @@ func (b *syncBuffer) String() string {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.buf.String()
+}
+
+// TestRunFailsOnBadToken: если Telegram не принял токен (getMe → 401), run
+// сразу возвращает 1 с понятной записью и не уходит в long polling, где telego
+// бесконечно повторял бы ошибку каждые 8 секунд.
+func TestRunFailsOnBadToken(t *testing.T) {
+	testutil.CaptureLog(t)
+	var mu sync.Mutex
+	var methods []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		methods = append(methods, path.Base(r.URL.Path))
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"ok":false,"error_code":401,"description":"Unauthorized"}`)
+	}))
+	t.Cleanup(srv.Close)
+	env := testEnv(map[string]string{
+		"BOT_TOKEN":     testToken,
+		"CHANNEL_ID":    "-100",
+		"LOG_FILE_PATH": filepath.Join(t.TempDir(), "bot.log"),
+	})
+
+	var stdout syncBuffer
+	done := make(chan int, 1)
+	go func() { done <- runWith(context.Background(), env, &stdout, telego.WithAPIServer(srv.URL)) }()
+	select {
+	case code := <-done:
+		if code != 1 {
+			t.Errorf("получен код %d, ожидался 1", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("получено: run не вернулся за 5 с, ожидался немедленный выход с кодом 1")
+	}
+
+	out := stdout.String()
+	if !regexp.MustCompile(`(?m)^time=\S+Z level=ERROR msg="Telegram не принял токен бота" err=`).MatchString(out) {
+		t.Errorf("получено без записи об отклонённом токене, ожидалась запись:\n%s", out)
+	}
+	if strings.Contains(out, "SECRET") {
+		t.Errorf("получен токен в логе, ожидалось его отсутствие:\n%s", out)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !reflect.DeepEqual(methods, []string{"getMe"}) {
+		t.Errorf("получены запросы %v, ожидался только getMe", methods)
+	}
 }
