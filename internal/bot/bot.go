@@ -1,23 +1,19 @@
-package main
+// Package bot принимает объявления из личного чата, публикует их в канал
+// и обрабатывает кнопки «Не актуально» / восстановления под ними.
+package bot
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
-	"os"
-	"os/signal"
 	"runtime/debug"
 	"strings"
-	"syscall"
 	"time"
 
 	tgbotapi "github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/config"
-	"github.com/golman/telegram-bot/internal/logging"
-	"github.com/golman/telegram-bot/internal/tgapi"
 )
 
 type VBBot struct {
@@ -33,86 +29,32 @@ type VBBotCfg struct {
 	authEnabled bool
 }
 
-// fatal логирует ошибку запуска и завершает процесс с кодом 1.
-func fatal(msg string, args ...any) {
-	slog.Error(msg, args...)
-	os.Exit(1)
-}
-
-// initLogging читает конфиг, настраивает по нему логи и пишет в них
-// предупреждения конфига — уже после открытия файла, чтобы они попали и туда.
-// Возвращает ошибку настройки логов или ошибку config.Load (нет BOT_TOKEN
-// или CHANNEL_ID); во втором случае логи всё равно настроены.
-func initLogging(getenv func(string) string, stdout io.Writer) (config.Config, error) {
-	cfg, warnings, loadErr := config.Load(getenv)
-	setupErr := logging.Setup(cfg.Log, stdout)
-	// При ошибке настройки файла предупреждения уходят хотя бы в stdout
-	// (туда логи направил logging.Bootstrap).
-	for _, w := range warnings {
-		slog.Warn("некорректная переменная окружения, используется значение по умолчанию",
-			"var", w.Var, "value", w.Value, "default", w.Default)
-	}
-	if setupErr != nil {
-		return cfg, setupErr
-	}
-	return cfg, loadErr
-}
-
-func main() {
-	logging.Bootstrap(os.Stdout)
-	cfg, err := initLogging(os.Getenv, os.Stdout)
-	if errors.Is(err, config.ErrNoToken) || errors.Is(err, config.ErrNoChannel) {
-		fatal(err.Error())
-	}
-	if err != nil {
-		fatal("не удалось настроить логирование", "err", err)
-	}
-
-	opts := append(logging.BotOptions(cfg.Token, cfg.Log.Debug), tgbotapi.WithAPICaller(tgapi.NewCaller()))
-	bot, err := tgbotapi.NewBot(cfg.Token, opts...)
-	if err != nil {
-		fatal("не удалось создать клиент Bot API", "err", err)
-	}
-
-	// SIGINT/SIGTERM отменяют ctx: telego прекращает long polling и закрывает
-	// канал обновлений, после чего Start дообрабатывает буфер и выходит.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	go func() {
-		<-ctx.Done()
-		// Повторный сигнал снова завершает процесс сразу, если остановка зависла.
-		stop()
-	}()
-
-	updates, err := bot.UpdatesViaLongPolling(ctx, &tgbotapi.GetUpdatesParams{Timeout: tgapi.LongPollTimeoutSeconds})
-	if err != nil {
-		fatal("не удалось запустить long polling", "err", err)
-	}
-
-	b := VBBot{
-		tgbot:     bot,
+// New создаёт бота, который работает через client и публикует объявления
+// в канал cfg.ChannelID.
+func New(client *tgbotapi.Bot, cfg config.Config) *VBBot {
+	return &VBBot{
+		tgbot:     client,
 		channelId: cfg.ChannelID,
 		mediamsg:  map[string]*MediaMessage{},
-		ticker:    time.NewTicker(albumTickInterval),
 		cfg: VBBotCfg{
 			authEnabled: cfg.AuthEnabled,
 		},
 	}
-	if err := b.Start(ctx, updates); err != nil {
-		stop()
-		fatal("бот остановился с ошибкой", "err", err)
-	}
 }
 
-// errUpdatesClosed — канал обновлений закрылся без запроса на остановку.
-var errUpdatesClosed = errors.New("канал обновлений закрыт без остановки бота")
+// ErrUpdatesClosed — канал обновлений закрылся без запроса на остановку.
+var ErrUpdatesClosed = errors.New("канал обновлений закрыт без остановки бота")
 
-// Start обрабатывает обновления до закрытия канала ch. telego закрывает его
+// Run обрабатывает обновления до закрытия канала ch. telego закрывает его
 // после отмены ctx, поэтому уже полученные обновления из буфера дочитываются
 // и обрабатываются, а затем публикуются накопленные альбомы.
-// Возвращает nil при остановке через ctx и errUpdatesClosed, если канал
-// закрылся сам.
-func (vbbot *VBBot) Start(ctx context.Context, ch <-chan tgbotapi.Update) error {
+// Возвращает nil при остановке через ctx и ErrUpdatesClosed, если канал
+// закрылся сам. Run вызывается один раз: тикер останавливается при выходе.
+func (vbbot *VBBot) Run(ctx context.Context, ch <-chan tgbotapi.Update) error {
+	// Тикер альбомов создаётся здесь; тесты могут задать свой заранее.
+	if vbbot.ticker == nil {
+		vbbot.ticker = time.NewTicker(albumTickInterval)
+	}
 	defer vbbot.ticker.Stop()
 	for {
 		select {
@@ -123,7 +65,7 @@ func (vbbot *VBBot) Start(ctx context.Context, ch <-chan tgbotapi.Update) error 
 					slog.Info("бот остановлен")
 					return nil
 				}
-				return errUpdatesClosed
+				return ErrUpdatesClosed
 			}
 			vbbot.dispatch(update)
 		case <-vbbot.ticker.C:
@@ -133,7 +75,7 @@ func (vbbot *VBBot) Start(ctx context.Context, ch <-chan tgbotapi.Update) error 
 }
 
 // flushMediaGroups публикует все ещё не отправленные альбомы и очищает накопитель.
-// Вызывается при выходе из Start, когда тикера больше не будет.
+// Вызывается при выходе из Run, когда тикера больше не будет.
 func (vbbot *VBBot) flushMediaGroups() {
 	for k, v := range vbbot.mediamsg {
 		if v.state != MessageStateToDelete {
@@ -231,7 +173,7 @@ func (vbbot *VBBot) rejectLateAlbumItem(mm *MediaMessage, msg *tgbotapi.Message)
 
 // tick — один шаг тикера: отправляет альбомы, после последнего фото которых
 // прошло albumQuietPeriod, и удаляет отправленные, у которых истекло окно
-// опоздавших фото. Вызывается только из цикла событий Start (и из тестов).
+// опоздавших фото. Вызывается только из цикла событий Run (и из тестов).
 func (vbbot *VBBot) tick() {
 	now := vbbot.clock()
 	for k, v := range vbbot.mediamsg {

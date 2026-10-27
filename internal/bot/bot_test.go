@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/golman/telegram-bot/internal/testutil"
 )
 
-// runStart запускает Start и ждёт его возврата не дольше секунды.
+// runStart запускает Run и ждёт его возврата не дольше секунды.
 func runStart(t *testing.T, b *VBBot, ctx context.Context, ch <-chan tgbotapi.Update) error {
 	t.Helper()
 	if b.ticker == nil {
@@ -20,12 +20,12 @@ func runStart(t *testing.T, b *VBBot, ctx context.Context, ch <-chan tgbotapi.Up
 		b.ticker = time.NewTicker(time.Hour)
 	}
 	done := make(chan error, 1)
-	go func() { done <- b.Start(ctx, ch) }()
+	go func() { done <- b.Run(ctx, ch) }()
 	select {
 	case err := <-done:
 		return err
 	case <-time.After(time.Second):
-		t.Fatal("Start не вернулся после закрытия канала обновлений")
+		t.Fatal("Run не вернулся после закрытия канала обновлений")
 		return nil
 	}
 }
@@ -44,14 +44,14 @@ func TestStartStopsOnShutdown(t *testing.T) {
 	close(ch)
 
 	if err := runStart(t, b, cancelledContext(), ch); err != nil {
-		t.Fatalf("Start при остановке вернул ошибку %v, ожидался nil", err)
+		t.Fatalf("Run при остановке вернул ошибку %v, ожидался nil", err)
 	}
 	if out := logs.String(); !strings.Contains(out, "бот остановлен") {
 		t.Fatalf("в логе нет записи об остановке:\n%s", out)
 	}
 }
 
-// TestStartWaitsForUpdatesClose: после отмены ctx Start не выходит сам,
+// TestStartWaitsForUpdatesClose: после отмены ctx Run не выходит сам,
 // а ждёт, пока telego закроет канал. Иначе обновления, которые ещё лежат
 // в буфере канала, были бы потеряны.
 func TestStartWaitsForUpdatesClose(t *testing.T) {
@@ -59,26 +59,26 @@ func TestStartWaitsForUpdatesClose(t *testing.T) {
 	b := &VBBot{mediamsg: map[string]*MediaMessage{}, ticker: time.NewTicker(time.Hour)}
 	ch := make(chan tgbotapi.Update)
 	done := make(chan error, 1)
-	go func() { done <- b.Start(cancelledContext(), ch) }()
+	go func() { done <- b.Run(cancelledContext(), ch) }()
 
 	select {
 	case <-done:
-		t.Fatal("Start вернулся до закрытия канала обновлений")
+		t.Fatal("Run вернулся до закрытия канала обновлений")
 	case <-time.After(100 * time.Millisecond):
 	}
 	close(ch)
 	select {
 	case err := <-done:
 		if err != nil {
-			t.Fatalf("Start вернул ошибку %v, ожидался nil", err)
+			t.Fatalf("Run вернул ошибку %v, ожидался nil", err)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("Start не вернулся после закрытия канала обновлений")
+		t.Fatal("Run не вернулся после закрытия канала обновлений")
 	}
 }
 
 // TestStartFailsWhenUpdatesClosedUnexpectedly: канал закрылся без остановки,
-// Start возвращает ошибку, чтобы main завершился с ненулевым кодом
+// Run возвращает ошибку, чтобы main завершился с ненулевым кодом
 // и supervisor перезапустил бота.
 func TestStartFailsWhenUpdatesClosedUnexpectedly(t *testing.T) {
 	testutil.CaptureLog(t)
@@ -88,7 +88,7 @@ func TestStartFailsWhenUpdatesClosedUnexpectedly(t *testing.T) {
 
 	err := runStart(t, b, context.Background(), ch)
 	if err == nil {
-		t.Fatal("Start вернул nil, ожидалась ошибка о закрытии канала обновлений")
+		t.Fatal("Run вернул nil, ожидалась ошибка о закрытии канала обновлений")
 	}
 	if !strings.Contains(err.Error(), "канал обновлений закрыт") {
 		t.Fatalf("ошибка %q не говорит о закрытии канала обновлений", err)
@@ -118,7 +118,7 @@ func TestStartFlushesPendingAlbums(t *testing.T) {
 	close(ch)
 
 	if err := runStart(t, b, cancelledContext(), ch); err != nil {
-		t.Fatalf("Start вернул ошибку: %v", err)
+		t.Fatalf("Run вернул ошибку: %v", err)
 	}
 
 	sent := map[string]bool{}
@@ -148,7 +148,7 @@ func TestStartDrainsBufferedUpdates(t *testing.T) {
 	close(ch)
 
 	if err := runStart(t, b, cancelledContext(), ch); err != nil {
-		t.Fatalf("Start вернул ошибку: %v", err)
+		t.Fatalf("Run вернул ошибку: %v", err)
 	}
 
 	groups := f.byMethod("sendMediaGroup")
