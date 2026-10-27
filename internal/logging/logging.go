@@ -41,8 +41,9 @@ func Bootstrap(stdout io.Writer) {
 }
 
 // Setup направляет логи в stdout и в файл с ротацией, выставляет уровень
-// из cfg.Debug и пишет запись «логирование настроено». При ошибке вывод
-// по умолчанию не меняется.
+// из cfg.Debug и пишет запись «логирование настроено». Файл открывается
+// сразу; если каталог не создать или файл не открыть на запись, возвращается
+// ошибка, а вывод по умолчанию не меняется.
 func Setup(cfg config.Log, stdout io.Writer) error {
 	if err := os.MkdirAll(filepath.Dir(cfg.FilePath), 0o755); err != nil {
 		return fmt.Errorf("создание каталога логов: %w", err)
@@ -54,6 +55,12 @@ func Setup(cfg config.Log, stdout io.Writer) error {
 		MaxBackups: cfg.MaxBackups,
 		MaxAge:     cfg.MaxAgeDays,
 		Compress:   cfg.Compress,
+	}
+	// lumberjack открывает файл при первой записи, а ошибки записи slog
+	// отбрасывает: без этой проверки недоступный файл молча терялся бы,
+	// и логи шли бы только в stdout.
+	if _, err := rotatingLog.Write(nil); err != nil {
+		return fmt.Errorf("открытие файла логов: %w", err)
 	}
 
 	slog.SetDefault(slog.New(NewHandler(io.MultiWriter(stdout, rotatingLog), logLevel)))

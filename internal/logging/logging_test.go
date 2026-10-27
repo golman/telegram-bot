@@ -159,6 +159,34 @@ func TestSetupResetsLevel(t *testing.T) {
 	}
 }
 
+// TestSetupUnwritableFile: если файл логов нельзя открыть на запись, Setup
+// возвращает ошибку сразу, а не молча пишет только в stdout, и вывод остаётся
+// тем, что настроил Bootstrap.
+func TestSetupUnwritableFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root пишет и в каталог без права записи")
+	}
+	testutil.CaptureLog(t) // восстановит slog.Default после теста
+	var stdout bytes.Buffer
+	logging.Bootstrap(&stdout)
+	dir := filepath.Join(t.TempDir(), "ro")
+	if err := os.Mkdir(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+
+	err := logging.Setup(config.Log{FilePath: filepath.Join(dir, "bot.log")}, io.Discard)
+	if err == nil {
+		t.Fatal("получено: Setup без ошибки для каталога без права записи, ожидалась ошибка")
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "bot.log")); statErr == nil {
+		t.Error("получен файл логов в каталоге без права записи, ожидалось его отсутствие")
+	}
+	slog.Info("после ошибки настройки")
+	if !strings.Contains(stdout.String(), "после ошибки настройки") {
+		t.Errorf("получено без записи в stdout после ошибки Setup, ожидалась запись:\n%s", stdout.String())
+	}
+}
+
 // TestBootstrap: до Setup логи идут в stdout в формате бота с уровнем info,
 // и туда же — если Setup не смог открыть файл.
 func TestBootstrap(t *testing.T) {

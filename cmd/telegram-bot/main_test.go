@@ -65,10 +65,11 @@ func TestRunLogsConfigWarningsToFile(t *testing.T) {
 // запись ERROR и предупреждения конфига в stdout и возвращает код 1.
 func TestRunConfigErrors(t *testing.T) {
 	cases := []struct {
-		name        string
-		vars        map[string]string
-		blockLogDir bool             // каталог логов лежал бы внутри обычного файла
-		want        []*regexp.Regexp // записи stdout в порядке появления
+		name           string
+		vars           map[string]string
+		blockLogDir    bool             // каталог логов лежал бы внутри обычного файла
+		readOnlyLogDir bool             // каталог логов есть, но без права записи
+		want           []*regexp.Regexp // записи stdout в порядке появления
 	}{
 		{
 			name: "нет BOT_TOKEN",
@@ -98,6 +99,15 @@ func TestRunConfigErrors(t *testing.T) {
 			blockLogDir: true,
 			want:        []*regexp.Regexp{errLogSetup},
 		},
+		{
+			// Файл логов открывается сразу, а не при первой записи: иначе бот
+			// молча писал бы только в stdout. Без BOT_TOKEN, чтобы при регрессии
+			// тест упал на «не задан BOT_TOKEN», а не пошёл в сеть.
+			name:           "файл логов не открыть",
+			vars:           map[string]string{"CHANNEL_ID": "-100"},
+			readOnlyLogDir: true,
+			want:           []*regexp.Regexp{errLogSetup},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -111,6 +121,16 @@ func TestRunConfigErrors(t *testing.T) {
 				}
 				tc.vars["LOG_FILE_PATH"] = filepath.Join(blocker, "logs", "bot.log")
 			}
+			if tc.readOnlyLogDir {
+				if os.Geteuid() == 0 {
+					t.Skip("root пишет и в каталог без права записи")
+				}
+				ro := filepath.Join(dir, "ro")
+				if err := os.Mkdir(ro, 0o555); err != nil {
+					t.Fatal(err)
+				}
+				tc.vars["LOG_FILE_PATH"] = filepath.Join(ro, "bot.log")
+			}
 
 			var stdout bytes.Buffer
 			if code := run(testEnv(tc.vars), &stdout); code != 1 {
@@ -118,7 +138,7 @@ func TestRunConfigErrors(t *testing.T) {
 			}
 			out := stdout.String()
 			assertInOrder(t, "stdout", out, tc.want...)
-			if tc.blockLogDir {
+			if tc.blockLogDir || tc.readOnlyLogDir {
 				if logSetUp.MatchString(out) {
 					t.Errorf("получена запись «логирование настроено», ожидалось её отсутствие:\n%s", out)
 				}
