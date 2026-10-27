@@ -6,7 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/mymmrac/telego"
-	"github.com/mymmrac/telego/telegoutil"
+	tu "github.com/mymmrac/telego/telegoutil"
 
 	"github.com/golman/telegram-bot/internal/post"
 )
@@ -149,7 +149,7 @@ func (b *Bot) sayNoEmptyMessage(chatID int64) {
 // Если нет, отвечает автору в чате chatID на его сообщение replyTo
 // и возвращает true. Такой пост не отправляется.
 func (b *Bot) rejectTooLong(src post.Source, chatID int64, replyTo int) bool {
-	n, limit := telegoutil.UTF16TextLen(src.Text), post.TextLimit(src)
+	n, limit := tu.UTF16TextLen(src.Text), post.TextLimit(src)
 	if n <= limit {
 		return false
 	}

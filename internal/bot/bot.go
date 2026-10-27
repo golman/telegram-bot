@@ -38,13 +38,13 @@ func New(client *telego.Bot, cfg config.Config) *Bot {
 	}
 }
 
-// ErrUpdatesClosed — канал обновлений закрылся без запроса на остановку.
-var ErrUpdatesClosed = errors.New("канал обновлений закрыт без остановки бота")
+// errUpdatesClosed — канал обновлений закрылся без запроса на остановку.
+var errUpdatesClosed = errors.New("канал обновлений закрыт без остановки бота")
 
 // Run обрабатывает обновления до закрытия канала ch. telego закрывает его
 // после отмены ctx, поэтому уже полученные обновления из буфера дочитываются
 // и обрабатываются, а затем публикуются накопленные альбомы.
-// Возвращает nil при остановке через ctx и ErrUpdatesClosed, если канал
+// Возвращает nil при остановке через ctx и errUpdatesClosed, если канал
 // закрылся сам. Run вызывается один раз: тикер останавливается при выходе.
 func (b *Bot) Run(ctx context.Context, ch <-chan telego.Update) error {
 	// Тикер альбомов создаётся здесь; тесты могут задать свой заранее.
@@ -61,7 +61,7 @@ func (b *Bot) Run(ctx context.Context, ch <-chan telego.Update) error {
 					slog.Info("бот остановлен")
 					return nil
 				}
-				return ErrUpdatesClosed
+				return errUpdatesClosed
 			}
 			b.dispatch(update)
 		case <-b.ticker.C:

@@ -211,7 +211,7 @@ $RECYCLE.BIN/
 # End of https://www.toptal.com/developers/gitignore/api/go,jetbrains+all,visualstudiocode,macos,linux,windows
 
 ### Проект ###
-# Бинарник `go build` (имя модуля) и будущее имя после переименования модуля
+# Бинарники: `go build .` до переноса в cmd/ и `go build ./cmd/telegram-bot`
 /TelegramBot
 /telegram-bot
 

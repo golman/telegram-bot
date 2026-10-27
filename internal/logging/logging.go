@@ -57,9 +57,11 @@ func Setup(cfg config.Log, stdout io.Writer) error {
 	}
 
 	slog.SetDefault(slog.New(NewHandler(io.MultiWriter(stdout, rotatingLog), logLevel)))
+	level := slog.LevelInfo
 	if cfg.Debug {
-		logLevel.Set(slog.LevelDebug)
+		level = slog.LevelDebug
 	}
+	logLevel.Set(level)
 	slog.Info("логирование настроено", "file", cfg.FilePath, "log_level", logLevel.Level(),
 		"max_size_mb", cfg.MaxSizeMB, "max_backups", cfg.MaxBackups, "max_age_days", cfg.MaxAgeDays, "compress", cfg.Compress)
 	return nil

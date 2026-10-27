@@ -9,6 +9,7 @@ import (
 
 	"github.com/mymmrac/telego"
 
+	"github.com/golman/telegram-bot/internal/config"
 	"github.com/golman/telegram-bot/internal/testutil"
 )
 
@@ -35,6 +36,23 @@ func cancelledContext() context.Context {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	return ctx
+}
+
+// TestNew: канал и проверка подписки берутся из конфига. Без этого бот
+// молча принимал бы объявления от всех, кто не подписан на канал.
+func TestNew(t *testing.T) {
+	for _, auth := range []bool{true, false} {
+		b := New(nil, config.Config{ChannelID: -1001234567890, AuthEnabled: auth})
+		if b.channelID != -1001234567890 {
+			t.Errorf("получен channelID %d, ожидался -1001234567890", b.channelID)
+		}
+		if b.authEnabled != auth {
+			t.Errorf("получен authEnabled %v, ожидался %v", b.authEnabled, auth)
+		}
+		if b.albums == nil {
+			t.Error("получен albums nil, ожидалась пустая map")
+		}
+	}
 }
 
 func TestRunStopsOnShutdown(t *testing.T) {

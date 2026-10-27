@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/mymmrac/telego"
-	"github.com/mymmrac/telego/telegoutil"
+	tu "github.com/mymmrac/telego/telegoutil"
 )
 
 func TestBuild(t *testing.T) {
@@ -213,8 +213,8 @@ func TestTextLimit(t *testing.T) {
 		media bool
 		limit int
 	}{
-		{"текст", false, MaxTextLen},
-		{"подпись медиа", true, MaxCaptionLen},
+		{"текст", false, maxTextLen},
+		{"подпись медиа", true, maxCaptionLen},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -224,11 +224,11 @@ func TestTextLimit(t *testing.T) {
 			src.Text = strings.Repeat("🚲", n/2) + strings.Repeat("я", n%2)
 
 			deprecated, _ := Build(src, true)
-			if got := telegoutil.UTF16TextLen(deprecated); got != tt.limit {
+			if got := tu.UTF16TextLen(deprecated); got != tt.limit {
 				t.Errorf("длина поста «Не актуально» = %d, ожидалась ровно %d", got, tt.limit)
 			}
 			published, _ := Build(src, false)
-			if got := telegoutil.UTF16TextLen(published); got > tt.limit {
+			if got := tu.UTF16TextLen(published); got > tt.limit {
 				t.Errorf("длина опубликованного поста = %d, больше лимита %d", got, tt.limit)
 			}
 		})

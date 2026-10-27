@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/mymmrac/telego"
-	"github.com/mymmrac/telego/telegoutil"
+	tu "github.com/mymmrac/telego/telegoutil"
 )
 
 // Вид поста в канале (собирает Build).
@@ -30,22 +30,22 @@ type Source struct {
 // Своего форматирования тело не получает: в пост попадает только разметка автора.
 // Пользовательские entities копируются со сдвигом на длину префикса (в UTF-16).
 func Build(src Source, deprecated bool) (string, []telego.MessageEntity) {
-	body := telegoutil.Entity(src.Text)
-	suffix := telegoutil.Entity(AuthorSuffix)
-	author := telegoutil.Entity(src.AuthorName).TextMentionWithID(src.AuthorID)
+	body := tu.Entity(src.Text)
+	suffix := tu.Entity(AuthorSuffix)
+	author := tu.Entity(src.AuthorName).TextMentionWithID(src.AuthorID)
 
-	parts := make([]telegoutil.MessageEntityCollection, 0, 4)
+	parts := make([]tu.MessageEntityCollection, 0, 4)
 	shift := 0
 	if deprecated {
-		parts = append(parts, telegoutil.Entity(DeprecatedPrefix))
+		parts = append(parts, tu.Entity(DeprecatedPrefix))
 		body = body.Strikethrough()
 		suffix = suffix.Strikethrough()
 		author = author.Strikethrough()
-		shift = telegoutil.UTF16TextLen(DeprecatedPrefix)
+		shift = tu.UTF16TextLen(DeprecatedPrefix)
 	}
 	parts = append(parts, body, suffix, author)
 
-	text, entities := telegoutil.MessageEntities(parts...)
+	text, entities := tu.MessageEntities(parts...)
 	for _, e := range src.Entities {
 		e.Offset += shift
 		entities = append(entities, e)
@@ -53,23 +53,23 @@ func Build(src Source, deprecated bool) (string, []telego.MessageEntity) {
 	return text, entities
 }
 
-// MaxTextLen и MaxCaptionLen — лимиты Telegram на длину текста сообщения
+// maxTextLen и maxCaptionLen — лимиты Telegram на длину текста сообщения
 // и подписи медиа (в UTF-16).
 const (
-	MaxTextLen    = 4096
-	MaxCaptionLen = 1024
+	maxTextLen    = 4096
+	maxCaptionLen = 1024
 )
 
 // TextLimit возвращает максимальную длину текста автора (в UTF-16),
 // при которой пост укладывается в лимит Telegram. Считается по самому длинному
 // виду поста — с пометкой «Не актуально», иначе кнопка не смогла бы его изменить.
 func TextLimit(src Source) int {
-	limit := MaxTextLen
+	limit := maxTextLen
 	if src.Media {
-		limit = MaxCaptionLen
+		limit = maxCaptionLen
 	}
 	text, _ := Build(src, true)
-	return limit - (telegoutil.UTF16TextLen(text) - telegoutil.UTF16TextLen(src.Text))
+	return limit - (tu.UTF16TextLen(text) - tu.UTF16TextLen(src.Text))
 }
 
 // DisplayName возвращает имя пользователя для приписки «by:», без висящего пробела.

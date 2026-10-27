@@ -139,6 +139,26 @@ func TestSetup(t *testing.T) {
 	}
 }
 
+// TestSetupResetsLevel: Setup без Debug возвращает уровень info, даже если
+// до этого уровень был debug — уровень не наследуется от прошлой настройки.
+func TestSetupResetsLevel(t *testing.T) {
+	testutil.CaptureLog(t) // восстановит slog.Default после теста
+	t.Cleanup(logging.ResetLevel)
+	dir := t.TempDir()
+	if err := logging.Setup(config.Log{FilePath: filepath.Join(dir, "debug.log"), Debug: true}, io.Discard); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	var stdout bytes.Buffer
+	if err := logging.Setup(config.Log{FilePath: filepath.Join(dir, "info.log")}, &stdout); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	slog.Debug("проверка отладки")
+
+	if out := stdout.String(); strings.Contains(out, "проверка отладки") || !strings.Contains(out, "log_level=INFO") {
+		t.Errorf("получен уровень debug после Setup без Debug, ожидался info:\n%s", out)
+	}
+}
+
 // TestBootstrap: до Setup логи идут в stdout в формате бота с уровнем info,
 // и туда же — если Setup не смог открыть файл.
 func TestBootstrap(t *testing.T) {

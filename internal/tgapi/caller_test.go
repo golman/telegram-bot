@@ -211,10 +211,10 @@ func TestNewCaller(t *testing.T) {
 	if !ok {
 		t.Fatalf("под rateLimitCaller лежит %T, ожидался *timeoutCaller", rl.next)
 	}
-	if tc.timeout != APITimeout {
-		t.Errorf("таймаут %s, ожидался APITimeout %s", tc.timeout, APITimeout)
+	if tc.timeout != apiTimeout {
+		t.Errorf("таймаут %s, ожидался apiTimeout %s", tc.timeout, apiTimeout)
 	}
-	if poll := time.Duration(LongPollTimeoutSeconds) * time.Second; APITimeout < poll+5*time.Second {
-		t.Errorf("APITimeout %s должен быть хотя бы на 5s больше long polling %s", APITimeout, poll)
+	if poll := time.Duration(LongPollTimeoutSeconds) * time.Second; apiTimeout < poll+5*time.Second {
+		t.Errorf("apiTimeout %s должен быть хотя бы на 5s больше long polling %s", apiTimeout, poll)
 	}
 }
