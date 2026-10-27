@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 )
 
 // testChannelID — канал бота в тестах.
@@ -117,19 +117,19 @@ func (f *fakeAPI) byMethod(m string) []apiCall {
 	return out
 }
 
-// newTestBot создаёт VBBot, который ходит в фейковый Bot API.
-func newTestBot(t *testing.T, fail map[string]string) (*VBBot, *fakeAPI) {
+// newTestBot создаёт Bot, который ходит в фейковый Bot API.
+func newTestBot(t *testing.T, fail map[string]string) (*Bot, *fakeAPI) {
 	t.Helper()
 	f := &fakeAPI{fail: fail}
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 	// Токен должен проходить проверку формата telego.
-	b, err := tgbotapi.NewBot("123456:"+strings.Repeat("A", 35),
-		tgbotapi.WithAPIServer(srv.URL), tgbotapi.WithDiscardLogger())
+	b, err := telego.NewBot("123456:"+strings.Repeat("A", 35),
+		telego.WithAPIServer(srv.URL), telego.WithDiscardLogger())
 	if err != nil {
 		t.Fatalf("не удалось создать бота: %v", err)
 	}
-	return &VBBot{tgbot: b, channelId: testChannelID}, f
+	return &Bot{client: b, channelID: testChannelID}, f
 }
 
 // jsonField возвращает поле key из JSON-объекта m, приведённое к T.
@@ -195,14 +195,14 @@ func onlyButton(t *testing.T, body map[string]any) map[string]any {
 }
 
 // jsonEntities возвращает массив entities из поля key, разобранный
-// в []tgbotapi.MessageEntity, чтобы сравнивать его со структурами.
-func jsonEntities(t *testing.T, m map[string]any, key string) []tgbotapi.MessageEntity {
+// в []telego.MessageEntity, чтобы сравнивать его со структурами.
+func jsonEntities(t *testing.T, m map[string]any, key string) []telego.MessageEntity {
 	t.Helper()
 	raw, err := json.Marshal(jsonField[[]any](t, m, key))
 	if err != nil {
 		t.Fatalf("поле %q: не удалось сериализовать: %v", key, err)
 	}
-	var out []tgbotapi.MessageEntity
+	var out []telego.MessageEntity
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("поле %q: не удалось разобрать entities: %v", key, err)
 	}

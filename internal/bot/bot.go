@@ -11,34 +11,30 @@ import (
 	"strings"
 	"time"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/config"
 )
 
-type VBBot struct {
-	tgbot     *tgbotapi.Bot
-	channelId int64
-	mediamsg  map[string]*MediaMessage
-	ticker    *time.Ticker
-	now       func() time.Time
-	cfg       VBBotCfg
-}
-
-type VBBotCfg struct {
+// Bot принимает объявления и публикует их в канал. Все обновления
+// обрабатываются в одной горутине Run, поэтому albums не нуждается в блокировках.
+type Bot struct {
+	client      *telego.Bot
+	channelID   int64
 	authEnabled bool
+	albums      map[string]*album
+	ticker      *time.Ticker
+	now         func() time.Time
 }
 
 // New создаёт бота, который работает через client и публикует объявления
 // в канал cfg.ChannelID.
-func New(client *tgbotapi.Bot, cfg config.Config) *VBBot {
-	return &VBBot{
-		tgbot:     client,
-		channelId: cfg.ChannelID,
-		mediamsg:  map[string]*MediaMessage{},
-		cfg: VBBotCfg{
-			authEnabled: cfg.AuthEnabled,
-		},
+func New(client *telego.Bot, cfg config.Config) *Bot {
+	return &Bot{
+		client:      client,
+		channelID:   cfg.ChannelID,
+		authEnabled: cfg.AuthEnabled,
+		albums:      map[string]*album{},
 	}
 }
 
@@ -50,38 +46,38 @@ var ErrUpdatesClosed = errors.New("канал обновлений закрыт 
 // и обрабатываются, а затем публикуются накопленные альбомы.
 // Возвращает nil при остановке через ctx и ErrUpdatesClosed, если канал
 // закрылся сам. Run вызывается один раз: тикер останавливается при выходе.
-func (vbbot *VBBot) Run(ctx context.Context, ch <-chan tgbotapi.Update) error {
+func (b *Bot) Run(ctx context.Context, ch <-chan telego.Update) error {
 	// Тикер альбомов создаётся здесь; тесты могут задать свой заранее.
-	if vbbot.ticker == nil {
-		vbbot.ticker = time.NewTicker(albumTickInterval)
+	if b.ticker == nil {
+		b.ticker = time.NewTicker(albumTickInterval)
 	}
-	defer vbbot.ticker.Stop()
+	defer b.ticker.Stop()
 	for {
 		select {
 		case update, ok := <-ch:
 			if !ok {
-				vbbot.flushMediaGroups()
+				b.flushMediaGroups()
 				if ctx.Err() != nil {
 					slog.Info("бот остановлен")
 					return nil
 				}
 				return ErrUpdatesClosed
 			}
-			vbbot.dispatch(update)
-		case <-vbbot.ticker.C:
-			vbbot.tick()
+			b.dispatch(update)
+		case <-b.ticker.C:
+			b.tick()
 		}
 	}
 }
 
 // flushMediaGroups публикует все ещё не отправленные альбомы и очищает накопитель.
 // Вызывается при выходе из Run, когда тикера больше не будет.
-func (vbbot *VBBot) flushMediaGroups() {
-	for k, v := range vbbot.mediamsg {
-		if v.state != MessageStateToDelete {
-			vbbot.publishAlbum(k, v)
+func (b *Bot) flushMediaGroups() {
+	for k, v := range b.albums {
+		if v.state != albumDone {
+			b.publishAlbum(k, v)
 		}
-		delete(vbbot.mediamsg, k)
+		delete(b.albums, k)
 	}
 }
 
@@ -89,35 +85,35 @@ func (vbbot *VBBot) flushMediaGroups() {
 // логируется вместе со стеком и не останавливает цикл событий. Альбом
 // помечается отправленным до отправки, чтобы после паники она не повторялась
 // на каждом шаге тикера.
-func (vbbot *VBBot) publishAlbum(id string, mm *MediaMessage) {
-	mm.state = MessageStateToDelete
-	mm.expiresAt = vbbot.clock().Add(albumLateWindow)
+func (b *Bot) publishAlbum(id string, a *album) {
+	a.state = albumDone
+	a.expiresAt = b.clock().Add(albumLateWindow)
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Error("паника при отправке альбома", "media_group_id", id, "user_id", mm.userid,
+			slog.Error("паника при отправке альбома", "media_group_id", id, "user_id", a.authorID,
 				"panic", fmt.Sprint(r), "stack", string(debug.Stack()))
 		}
 	}()
-	vbbot.sendMediaGroup(mm)
+	b.sendMediaGroup(a)
 }
 
 // admit проверяет подписку автора и фильтры. Если сообщение не принято,
 // автор получает объяснение и возвращается false.
-func (vbbot *VBBot) admit(update tgbotapi.Update) bool {
+func (b *Bot) admit(update telego.Update) bool {
 	chatID := update.Message.Chat.ID
-	subscribed, err := vbbot.authByChannel(update)
+	subscribed, err := b.authByChannel(update)
 	if err != nil {
 		// Сырой текст ошибки API пользователю не показывается.
 		slog.Warn("не удалось проверить подписку", "user_id", update.Message.From.ID, "err", err)
-		vbbot.sendTextMessage(AuthCheckFailedMessage, chatID)
+		b.sendTextMessage(authCheckFailedMessage, chatID)
 		return false
 	}
 	if !subscribed {
-		vbbot.sendTextMessage(NotSubscribedMessage, chatID)
+		b.sendTextMessage(notSubscribedMessage, chatID)
 		return false
 	}
-	if vbbot.runFilter(update) {
-		vbbot.sendTextMessage(FiltersFailedMessage, chatID)
+	if b.runFilter(update) {
+		b.sendTextMessage(filtersFailedMessage, chatID)
 		return false
 	}
 	return true
@@ -130,73 +126,73 @@ func (vbbot *VBBot) admit(update tgbotapi.Update) bool {
 // Видео и файлы собираются вместе с фото, чтобы не потерять подпись,
 // но не публикуются. «Будет отправлено» обещается, как только у альбома
 // есть и фото, и подпись.
-func (vbbot *VBBot) addAlbumItem(update tgbotapi.Update) {
+func (b *Bot) addAlbumItem(update telego.Update) {
 	msg := update.Message
-	mm, ok := vbbot.mediamsg[msg.MediaGroupID]
+	a, ok := b.albums[msg.MediaGroupID]
 	if !ok {
-		mm = newMediaMessage(msg)
-		vbbot.mediamsg[msg.MediaGroupID] = mm
-		if !vbbot.admit(update) {
-			mm.rejected = true
-			mm.state = MessageStateToDelete
-			mm.expiresAt = vbbot.clock().Add(albumLateWindow)
+		a = newAlbum(msg)
+		b.albums[msg.MediaGroupID] = a
+		if !b.admit(update) {
+			a.rejected = true
+			a.state = albumDone
+			a.expiresAt = b.clock().Add(albumLateWindow)
 			return
 		}
 	}
-	if mm.rejected {
+	if a.rejected {
 		return
 	}
-	if mm.state == MessageStateToDelete {
-		vbbot.rejectLateAlbumItem(mm, msg)
+	if a.state == albumDone {
+		b.rejectLateAlbumItem(a, msg)
 		return
 	}
-	mm.addItem(msg)
-	mm.lastItemAt = vbbot.clock()
-	if !mm.promised && mm.caption != "" && len(mm.fileid) > 0 {
-		mm.promised = true
-		vbbot.sendTextMessage(MediaGroupDelayMessage, msg.Chat.ID)
+	a.addItem(msg)
+	a.lastItemAt = b.clock()
+	if !a.promised && a.caption != "" && len(a.fileIDs) > 0 {
+		a.promised = true
+		b.sendTextMessage(mediaGroupDelayMessage, msg.Chat.ID)
 	}
 }
 
 // rejectLateAlbumItem обрабатывает фото альбома, который уже отправлен:
 // добавить его в опубликованный пост нельзя, поэтому автор один раз на альбом
-// получает AlbumItemLateMessage.
-func (vbbot *VBBot) rejectLateAlbumItem(mm *MediaMessage, msg *tgbotapi.Message) {
+// получает albumItemLateMessage.
+func (b *Bot) rejectLateAlbumItem(a *album, msg *telego.Message) {
 	slog.Info("фото пришло после отправки альбома, не опубликовано",
 		"user_id", msg.Chat.ID, "message_id", msg.MessageID, "media_group_id", msg.MediaGroupID)
-	if mm.lateNotified {
+	if a.lateNotified {
 		return
 	}
-	mm.lateNotified = true
-	vbbot.sendTextMessage(AlbumItemLateMessage, msg.Chat.ID)
+	a.lateNotified = true
+	b.sendTextMessage(albumItemLateMessage, msg.Chat.ID)
 }
 
 // tick — один шаг тикера: отправляет альбомы, после последнего фото которых
 // прошло albumQuietPeriod, и удаляет отправленные, у которых истекло окно
 // опоздавших фото. Вызывается только из цикла событий Run (и из тестов).
-func (vbbot *VBBot) tick() {
-	now := vbbot.clock()
-	for k, v := range vbbot.mediamsg {
+func (b *Bot) tick() {
+	now := b.clock()
+	for k, v := range b.albums {
 		switch {
-		case v.state == MessageStateInit && now.Sub(v.lastItemAt) >= albumQuietPeriod:
-			vbbot.publishAlbum(k, v)
-		case v.state == MessageStateToDelete && !now.Before(v.expiresAt):
-			delete(vbbot.mediamsg, k)
+		case v.state == albumCollecting && now.Sub(v.lastItemAt) >= albumQuietPeriod:
+			b.publishAlbum(k, v)
+		case v.state == albumDone && !now.Before(v.expiresAt):
+			delete(b.albums, k)
 		}
 	}
 }
 
 // clock возвращает текущее время; тесты подменяют его через now.
-func (vbbot *VBBot) clock() time.Time {
-	if vbbot.now != nil {
-		return vbbot.now()
+func (b *Bot) clock() time.Time {
+	if b.now != nil {
+		return b.now()
 	}
 	return time.Now()
 }
 
 // dispatch обрабатывает одно обновление. Паника внутри обработчика
 // логируется вместе со стеком и не останавливает цикл событий.
-func (vbbot *VBBot) dispatch(update tgbotapi.Update) {
+func (b *Bot) dispatch(update telego.Update) {
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("паника при обработке обновления", "update_id", update.UpdateID,
@@ -204,24 +200,24 @@ func (vbbot *VBBot) dispatch(update tgbotapi.Update) {
 		}
 	}()
 	if update.Message != nil {
-		if !IsCommand(update.Message) {
-			vbbot.handleUpdate(update)
+		if !isCommand(update.Message) {
+			b.handleUpdate(update)
 		}
 	} else if update.CallbackQuery != nil {
-		vbbot.handleCallbackQuery(update.CallbackQuery)
+		b.handleCallbackQuery(update.CallbackQuery)
 	}
 }
 
-func IsCommand(msg *tgbotapi.Message) bool {
+func isCommand(msg *telego.Message) bool {
 	return msg.Text != "" && strings.HasPrefix(msg.Text, "/")
 }
 
-func (vbbot *VBBot) confirmNewAd(chatId int64, replyToId int, sentMsg tgbotapi.Message) {
-	buttonMsg := tgbotapi.SendMessageParams{
-		ChatID: tgbotapi.ChatID{ID: chatId},
-		Text:   AdPublishedMessage,
-		ReplyParameters: &tgbotapi.ReplyParameters{
-			MessageID: replyToId,
+func (b *Bot) confirmNewAd(chatID int64, replyToID int, sentMsg telego.Message) {
+	buttonMsg := telego.SendMessageParams{
+		ChatID: telego.ChatID{ID: chatID},
+		Text:   adPublishedMessage,
+		ReplyParameters: &telego.ReplyParameters{
+			MessageID: replyToID,
 		},
 	}
 
@@ -230,16 +226,16 @@ func (vbbot *VBBot) confirmNewAd(chatId int64, replyToId int, sentMsg tgbotapi.M
 		chatID:    sentMsg.Chat.ID,
 		messageID: sentMsg.MessageID,
 	})
-	if err := vbbot.sendMessage(&buttonMsg); err != nil {
-		slog.Warn("не удалось отправить подтверждение", "chat_id", chatId, "err", err)
-		vbbot.sendTextMessage(ConfirmFailedMessage, chatId)
+	if err := b.sendMessage(&buttonMsg); err != nil {
+		slog.Warn("не удалось отправить подтверждение", "chat_id", chatID, "err", err)
+		b.sendTextMessage(confirmFailedMessage, chatID)
 	}
 }
 
 // handleUpdate обрабатывает сообщение автора. Это единственный вход для
 // сообщений, поэтому дальше (authByChannel, send.go) From уже не nil.
-func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
-	if update.Message.Chat.Type != tgbotapi.ChatTypePrivate {
+func (b *Bot) handleUpdate(update telego.Update) {
+	if update.Message.Chat.Type != telego.ChatTypePrivate {
 		return
 	}
 	if update.Message.From == nil {
@@ -249,21 +245,21 @@ func (vbbot *VBBot) handleUpdate(update tgbotapi.Update) {
 	msg := update.Message
 	// Элементы альбома проверяются один раз на весь альбом, в addAlbumItem.
 	if msg.MediaGroupID != "" {
-		vbbot.addAlbumItem(update)
+		b.addAlbumItem(update)
 		return
 	}
-	if !vbbot.admit(update) {
+	if !b.admit(update) {
 		return
 	}
 	// Принимаются только текст и фото.
 	if msg.Photo == nil && msg.Text == "" {
 		slog.Info("сообщение не текст и не фото, отклонено", "user_id", msg.Chat.ID, "message_id", msg.MessageID)
-		vbbot.sendTextMessage(UnsupportedMessage, msg.Chat.ID)
+		b.sendTextMessage(unsupportedMessage, msg.Chat.ID)
 		return
 	}
 	if msg.Photo != nil {
-		vbbot.sendPhotoMessage(update)
+		b.sendPhotoMessage(update)
 	} else {
-		vbbot.sendPlainMessage(update)
+		b.sendPlainMessage(update)
 	}
 }

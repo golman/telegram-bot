@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log/slog"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 	"github.com/mymmrac/telego/telegoutil"
 
 	"github.com/golman/telegram-bot/internal/post"
@@ -15,38 +15,38 @@ import (
 // и ID поста для кнопки «Не актуально» взять неоткуда.
 var errEmptyMediaGroupResponse = errors.New("пустой ответ на sendMediaGroup")
 
-func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
-	if len(mm.fileid) == 0 {
+func (b *Bot) sendMediaGroup(a *album) {
+	if len(a.fileIDs) == 0 {
 		// В альбоме только видео или файлы.
-		vbbot.sendTextMessage(UnsupportedMessage, mm.userid)
+		b.sendTextMessage(unsupportedMessage, a.authorID)
 		return
 	}
-	if mm.caption == "" {
-		vbbot.sayNoEmptyMessage(mm.userid)
+	if a.caption == "" {
+		b.sayNoEmptyMessage(a.authorID)
 		return
 	}
 
 	src := post.Source{
-		Text:       mm.caption,
-		Entities:   mm.entities,
-		AuthorID:   mm.userid,
-		AuthorName: mm.fullname,
+		Text:       a.caption,
+		Entities:   a.entities,
+		AuthorID:   a.authorID,
+		AuthorName: a.authorName,
 		Media:      true,
 	}
-	if vbbot.rejectTooLong(src, mm.userid, mm.originalmessageid) {
+	if b.rejectTooLong(src, a.authorID, a.replyToID) {
 		return
 	}
 	text, entities := post.Build(src, false)
-	mgc := tgbotapi.SendMediaGroupParams{
-		ChatID: tgbotapi.ChatID{ID: vbbot.channelId},
-		Media:  make([]tgbotapi.InputMedia, 0),
+	mgc := telego.SendMediaGroupParams{
+		ChatID: telego.ChatID{ID: b.channelID},
+		Media:  make([]telego.InputMedia, 0),
 	}
 
-	for i := range mm.fileid {
-		ph := mm.fileid[i]
-		imp := tgbotapi.InputMediaPhoto{
+	for i := range a.fileIDs {
+		ph := a.fileIDs[i]
+		imp := telego.InputMediaPhoto{
 			Type: "photo",
-			Media: tgbotapi.InputFile{
+			Media: telego.InputFile{
 				FileID: ph,
 			},
 		}
@@ -57,16 +57,16 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 		mgc.Media = append(mgc.Media, &imp)
 	}
 
-	sentMsg, err := vbbot.tgbot.SendMediaGroup(context.Background(), &mgc)
+	sentMsg, err := b.client.SendMediaGroup(context.Background(), &mgc)
 	if err == nil && len(sentMsg) == 0 {
 		err = errEmptyMediaGroupResponse
 	}
 	if err != nil {
-		vbbot.reportPublishError(err, mm.userid)
+		b.reportPublishError(err, a.authorID)
 	} else {
-		vbbot.confirmNewAd(mm.userid, mm.originalmessageid, sentMsg[0])
-		if mm.skipped > 0 {
-			vbbot.sendTextMessage(AlbumSkippedMessage, mm.userid)
+		b.confirmNewAd(a.authorID, a.replyToID, sentMsg[0])
+		if a.skipped > 0 {
+			b.sendTextMessage(albumSkippedMessage, a.authorID)
 		}
 	}
 
@@ -75,26 +75,26 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 // sendPhotoMessage публикует одиночное фото с подписью. Пост собирается
 // той же post.FromMessage, что и при нажатии кнопки, поэтому
 // публикация и пометка «Не актуально» берут текст одинаково.
-func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
+func (b *Bot) sendPhotoMessage(update telego.Update) {
 	src, ok := post.FromMessage(update.Message)
 	if !ok {
-		vbbot.sayNoEmptyMessage(update.Message.Chat.ID)
+		b.sayNoEmptyMessage(update.Message.Chat.ID)
 		return
 	}
 
 	// Получение фотографии с наибольшим размером
 	photo := (update.Message.Photo)[len(update.Message.Photo)-1]
 
-	if vbbot.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {
+	if b.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {
 		return
 	}
 	text, ents := post.Build(src, false)
-	msg := tgbotapi.SendMediaGroupParams{
-		ChatID: tgbotapi.ChatID{ID: vbbot.channelId},
-		Media: []tgbotapi.InputMedia{
-			&tgbotapi.InputMediaPhoto{
+	msg := telego.SendMediaGroupParams{
+		ChatID: telego.ChatID{ID: b.channelID},
+		Media: []telego.InputMedia{
+			&telego.InputMediaPhoto{
 				Type: "photo",
-				Media: tgbotapi.InputFile{
+				Media: telego.InputFile{
 					FileID: photo.FileID,
 				},
 				Caption:         text,
@@ -104,87 +104,87 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	}
 
 	// Отправка сообщения с фотографией и подписью
-	sentMsg, err := vbbot.tgbot.SendMediaGroup(context.Background(), &msg)
+	sentMsg, err := b.client.SendMediaGroup(context.Background(), &msg)
 	if err == nil && len(sentMsg) == 0 {
 		err = errEmptyMediaGroupResponse
 	}
 	if err != nil {
-		vbbot.reportPublishError(err, update.Message.Chat.ID)
+		b.reportPublishError(err, update.Message.Chat.ID)
 	} else {
-		vbbot.confirmNewAd(update.Message.From.ID, update.Message.MessageID, sentMsg[0])
+		b.confirmNewAd(update.Message.From.ID, update.Message.MessageID, sentMsg[0])
 	}
 }
 
 // sendPlainMessage публикует текстовое объявление; пост собирается
 // post.FromMessage, как и в sendPhotoMessage.
-func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
+func (b *Bot) sendPlainMessage(update telego.Update) {
 	src, ok := post.FromMessage(update.Message)
 	if !ok {
-		vbbot.sayNoEmptyMessage(update.Message.Chat.ID)
+		b.sayNoEmptyMessage(update.Message.Chat.ID)
 		return
 	}
-	if vbbot.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {
+	if b.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {
 		return
 	}
 	text, ents := post.Build(src, false)
-	emsg := &tgbotapi.SendMessageParams{
-		ChatID:   tgbotapi.ChatID{ID: vbbot.channelId},
+	emsg := &telego.SendMessageParams{
+		ChatID:   telego.ChatID{ID: b.channelID},
 		Text:     text,
 		Entities: ents,
 	}
-	sentMsg, err := vbbot.tgbot.SendMessage(context.Background(), emsg)
+	sentMsg, err := b.client.SendMessage(context.Background(), emsg)
 	if err != nil {
-		vbbot.reportPublishError(err, update.Message.Chat.ID)
+		b.reportPublishError(err, update.Message.Chat.ID)
 	} else {
-		vbbot.confirmNewAd(update.Message.From.ID, update.Message.MessageID, *sentMsg)
+		b.confirmNewAd(update.Message.From.ID, update.Message.MessageID, *sentMsg)
 	}
 }
 
 // sayNoEmptyMessage отвечает автору, что у объявления нет текста или подписи.
-func (vbbot *VBBot) sayNoEmptyMessage(chatId int64) {
-	vbbot.sendTextMessage(EmptyMessage, chatId)
+func (b *Bot) sayNoEmptyMessage(chatID int64) {
+	b.sendTextMessage(emptyMessage, chatID)
 }
 
 // rejectTooLong проверяет, уместится ли пост из src в лимит Telegram.
 // Если нет, отвечает автору в чате chatID на его сообщение replyTo
 // и возвращает true. Такой пост не отправляется.
-func (vbbot *VBBot) rejectTooLong(src post.Source, chatID int64, replyTo int) bool {
+func (b *Bot) rejectTooLong(src post.Source, chatID int64, replyTo int) bool {
 	n, limit := telegoutil.UTF16TextLen(src.Text), post.TextLimit(src)
 	if n <= limit {
 		return false
 	}
 	slog.Info("объявление слишком длинное", "user_id", src.AuthorID, "length", n, "limit", limit)
-	msg := tgbotapi.SendMessageParams{
-		ChatID: tgbotapi.ChatID{ID: chatID},
+	msg := telego.SendMessageParams{
+		ChatID: telego.ChatID{ID: chatID},
 		Text:   postTooLongText(n - limit),
 		// Предупреждение уйдёт, даже если автор уже удалил исходное сообщение.
-		ReplyParameters: &tgbotapi.ReplyParameters{MessageID: replyTo, AllowSendingWithoutReply: true},
+		ReplyParameters: &telego.ReplyParameters{MessageID: replyTo, AllowSendingWithoutReply: true},
 	}
-	if err := vbbot.sendMessage(&msg); err != nil {
+	if err := b.sendMessage(&msg); err != nil {
 		slog.Warn("не удалось отправить сообщение", "chat_id", chatID, "err", err)
 	}
 	return true
 }
 
-func (vbbot *VBBot) sendTextMessage(txtMsg string, chatId int64) {
-	botMsg := tgbotapi.SendMessageParams{
-		ChatID: tgbotapi.ChatID{ID: chatId},
+func (b *Bot) sendTextMessage(txtMsg string, chatID int64) {
+	botMsg := telego.SendMessageParams{
+		ChatID: telego.ChatID{ID: chatID},
 		Text:   txtMsg,
 	}
-	if err := vbbot.sendMessage(&botMsg); err != nil {
+	if err := b.sendMessage(&botMsg); err != nil {
 		// Второе сообщение в тот же чат, скорее всего, тоже не дойдёт.
-		slog.Warn("не удалось отправить сообщение", "chat_id", chatId, "err", err)
+		slog.Warn("не удалось отправить сообщение", "chat_id", chatID, "err", err)
 	}
 }
 
-func (vbbot *VBBot) sendMessage(msg *tgbotapi.SendMessageParams) error {
-	_, err := vbbot.tgbot.SendMessage(context.Background(), msg)
+func (b *Bot) sendMessage(msg *telego.SendMessageParams) error {
+	_, err := b.client.SendMessage(context.Background(), msg)
 	return err
 }
 
 // reportPublishError логирует ошибку публикации объявления и сообщает автору
 // в чат chatID понятный текст. Сырой текст ошибки API автору не показывается.
-func (vbbot *VBBot) reportPublishError(err error, chatID int64) {
+func (b *Bot) reportPublishError(err error, chatID int64) {
 	slog.Error("не удалось опубликовать объявление", "chat_id", chatID, "err", err)
-	vbbot.sendTextMessage(PublishFailedMessage, chatID)
+	b.sendTextMessage(publishFailedMessage, chatID)
 }

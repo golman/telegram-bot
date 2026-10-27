@@ -4,20 +4,20 @@ import (
 	"context"
 	"log/slog"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 )
 
 // authByChannel проверяет, что автор сообщения состоит в канале.
 // Ошибка возвращается, если Telegram не ответил на GetChatMember:
 // в этом случае подписка неизвестна, а не отсутствует.
-func (vbbot *VBBot) authByChannel(update tgbotapi.Update) (bool, error) {
-	if !vbbot.cfg.authEnabled {
+func (b *Bot) authByChannel(update telego.Update) (bool, error) {
+	if !b.authEnabled {
 		return true, nil
 	}
-	cmc := tgbotapi.GetChatMemberParams{}
+	cmc := telego.GetChatMemberParams{}
 	cmc.UserID = update.Message.From.ID
-	cmc.ChatID = tgbotapi.ChatID{ID: vbbot.channelId}
-	cm, err := vbbot.tgbot.GetChatMember(context.Background(), &cmc)
+	cmc.ChatID = telego.ChatID{ID: b.channelID}
+	cm, err := b.client.GetChatMember(context.Background(), &cmc)
 
 	if err != nil {
 		return false, err

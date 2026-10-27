@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/post"
 )
@@ -41,28 +41,28 @@ func TestHandleCallbackQuery(t *testing.T) {
 	tests := []struct {
 		name       string
 		data       string
-		msg        tgbotapi.MaybeInaccessibleMessage
+		msg        telego.MaybeInaccessibleMessage
 		fail       map[string]string
 		wantAnswer string
 		// wantEdits — методы правки по порядку, без answerCallbackQuery.
 		wantEdits []string
 		check     func(t *testing.T, f *fakeAPI)
 	}{
-		{name: "неизвестное действие", data: "noop_1_2", msg: confirmMsg(textReply()), wantAnswer: CallbackInvalidMessage},
-		{name: "пустые данные", data: "", msg: confirmMsg(textReply()), wantAnswer: CallbackInvalidMessage},
-		{name: "чужой канал", data: "delete_-100_42", msg: confirmMsg(textReply()), wantAnswer: CallbackInvalidMessage},
-		{name: "нет сообщения", data: "delete_-1001234567890_42", msg: nil, wantAnswer: OriginalMessageMissingMessage},
+		{name: "неизвестное действие", data: "noop_1_2", msg: confirmMsg(textReply()), wantAnswer: callbackInvalidMessage},
+		{name: "пустые данные", data: "", msg: confirmMsg(textReply()), wantAnswer: callbackInvalidMessage},
+		{name: "чужой канал", data: "delete_-100_42", msg: confirmMsg(textReply()), wantAnswer: callbackInvalidMessage},
+		{name: "нет сообщения", data: "delete_-1001234567890_42", msg: nil, wantAnswer: originalMessageMissingMessage},
 		{
 			name: "сообщение недоступно", data: "delete_-1001234567890_42",
-			msg:        &tgbotapi.InaccessibleMessage{Chat: tgbotapi.Chat{ID: testAuthorID}, MessageID: testConfirmMessageID},
-			wantAnswer: OriginalMessageMissingMessage,
+			msg:        &telego.InaccessibleMessage{Chat: telego.Chat{ID: testAuthorID}, MessageID: testConfirmMessageID},
+			wantAnswer: originalMessageMissingMessage,
 		},
-		{name: "исходное сообщение удалено", data: "delete_-1001234567890_42", msg: confirmMsg(nil), wantAnswer: OriginalMessageMissingMessage},
-		{name: "у исходного нет автора", data: "delete_-1001234567890_42", msg: confirmMsg(&tgbotapi.Message{Text: "x"}), wantAnswer: OriginalMessageMissingMessage},
-		{name: "фото без подписи", data: "delete_-1001234567890_42", msg: confirmMsg(photoReply("")), wantAnswer: OriginalMessageMissingMessage},
+		{name: "исходное сообщение удалено", data: "delete_-1001234567890_42", msg: confirmMsg(nil), wantAnswer: originalMessageMissingMessage},
+		{name: "у исходного нет автора", data: "delete_-1001234567890_42", msg: confirmMsg(&telego.Message{Text: "x"}), wantAnswer: originalMessageMissingMessage},
+		{name: "фото без подписи", data: "delete_-1001234567890_42", msg: confirmMsg(photoReply("")), wantAnswer: originalMessageMissingMessage},
 		{
 			name: "текст: кнопка до деплоя, delete", data: "delete_-1001234567890_42", msg: confirmMsg(textReply()),
-			wantAnswer: AdDeprecatedMessage,
+			wantAnswer: adDeprecatedMessage,
 			wantEdits:  []string{"editMessageText", "editMessageText"},
 			check: func(t *testing.T, f *fakeAPI) {
 				edits := f.byMethod("editMessageText")
@@ -71,12 +71,12 @@ func TestHandleCallbackQuery(t *testing.T) {
 				if got := jsonString(t, body, "text"); !strings.HasPrefix(got, post.DeprecatedPrefix) {
 					t.Errorf("текст поста = %q, ожидался префикс %q", got, post.DeprecatedPrefix)
 				}
-				checkConfirm(t, edits[1].body, AdDeprecatedMessage, RestoreButton, "restore_-1001234567890_42")
+				checkConfirm(t, edits[1].body, adDeprecatedMessage, restoreButton, "restore_-1001234567890_42")
 			},
 		},
 		{
 			name: "фото: restore", data: "restore_-1001234567890_43", msg: confirmMsg(photoReply("cap")),
-			wantAnswer: AdRestoredMessage,
+			wantAnswer: adRestoredMessage,
 			wantEdits:  []string{"editMessageCaption", "editMessageText"},
 			check: func(t *testing.T, f *fakeAPI) {
 				body := f.byMethod("editMessageCaption")[0].body
@@ -84,12 +84,12 @@ func TestHandleCallbackQuery(t *testing.T) {
 				if got, want := jsonString(t, body, "caption"), "cap"+post.AuthorSuffix+"Иван"; got != want {
 					t.Errorf("подпись поста = %q, ожидалось %q", got, want)
 				}
-				checkConfirm(t, f.byMethod("editMessageText")[0].body, AdRestoredMessage, DeprecateButton, "delete_-1001234567890_43")
+				checkConfirm(t, f.byMethod("editMessageText")[0].body, adRestoredMessage, deprecateButton, "delete_-1001234567890_43")
 			},
 		},
 		{
 			name: "фото: delete", data: "delete_-1001234567890_43", msg: confirmMsg(photoReply("cap")),
-			wantAnswer: AdDeprecatedMessage,
+			wantAnswer: adDeprecatedMessage,
 			wantEdits:  []string{"editMessageCaption", "editMessageText"},
 			check: func(t *testing.T, f *fakeAPI) {
 				body := f.byMethod("editMessageCaption")[0].body
@@ -97,12 +97,12 @@ func TestHandleCallbackQuery(t *testing.T) {
 				if got := jsonString(t, body, "caption"); !strings.HasPrefix(got, post.DeprecatedPrefix) {
 					t.Errorf("подпись поста = %q, ожидался префикс %q", got, post.DeprecatedPrefix)
 				}
-				checkConfirm(t, f.byMethod("editMessageText")[0].body, AdDeprecatedMessage, RestoreButton, "restore_-1001234567890_43")
+				checkConfirm(t, f.byMethod("editMessageText")[0].body, adDeprecatedMessage, restoreButton, "restore_-1001234567890_43")
 			},
 		},
 		{
 			name: "текст: restore", data: "restore_-1001234567890_42", msg: confirmMsg(textReply()),
-			wantAnswer: AdRestoredMessage,
+			wantAnswer: adRestoredMessage,
 			wantEdits:  []string{"editMessageText", "editMessageText"},
 			check: func(t *testing.T, f *fakeAPI) {
 				edits := f.byMethod("editMessageText")
@@ -111,19 +111,19 @@ func TestHandleCallbackQuery(t *testing.T) {
 				if got := jsonString(t, body, "text"); strings.HasPrefix(got, post.DeprecatedPrefix) {
 					t.Errorf("текст восстановленного поста = %q, префикса %q быть не должно", got, post.DeprecatedPrefix)
 				}
-				checkConfirm(t, edits[1].body, AdRestoredMessage, DeprecateButton, "delete_-1001234567890_42")
+				checkConfirm(t, edits[1].body, adRestoredMessage, deprecateButton, "delete_-1001234567890_42")
 			},
 		},
 		{
 			name: "ошибка правки текста", data: "delete_-1001234567890_42", msg: confirmMsg(textReply()),
 			fail:       map[string]string{"editMessageText": "Bad Request: message to edit not found"},
-			wantAnswer: ChannelEditFailedMessage,
+			wantAnswer: channelEditFailedMessage,
 			wantEdits:  []string{"editMessageText"},
 		},
 		{
 			name: "ошибка правки подписи", data: "delete_-1001234567890_43", msg: confirmMsg(photoReply("cap")),
 			fail:       map[string]string{"editMessageCaption": "Bad Request: message to edit not found"},
-			wantAnswer: ChannelEditFailedMessage,
+			wantAnswer: channelEditFailedMessage,
 			wantEdits:  []string{"editMessageCaption"},
 		},
 		{
@@ -132,10 +132,10 @@ func TestHandleCallbackQuery(t *testing.T) {
 			// переключается, автор видит обычный ответ.
 			name: "фото: пост уже помечен", data: "delete_-1001234567890_43", msg: confirmMsg(photoReply("cap")),
 			fail:       map[string]string{"editMessageCaption": notModified},
-			wantAnswer: AdDeprecatedMessage,
+			wantAnswer: adDeprecatedMessage,
 			wantEdits:  []string{"editMessageCaption", "editMessageText"},
 			check: func(t *testing.T, f *fakeAPI) {
-				checkConfirm(t, f.byMethod("editMessageText")[0].body, AdDeprecatedMessage, RestoreButton, "restore_-1001234567890_43")
+				checkConfirm(t, f.byMethod("editMessageText")[0].body, adDeprecatedMessage, restoreButton, "restore_-1001234567890_43")
 			},
 		},
 		{
@@ -143,19 +143,19 @@ func TestHandleCallbackQuery(t *testing.T) {
 			// отвечают «message is not modified».
 			name: "текст: всё уже восстановлено", data: "restore_-1001234567890_42", msg: confirmMsg(textReply()),
 			fail:       map[string]string{"editMessageText": notModified},
-			wantAnswer: AdRestoredMessage,
+			wantAnswer: adRestoredMessage,
 			wantEdits:  []string{"editMessageText", "editMessageText"},
 		},
 		{
 			name: "ошибка ответа на callback", data: "noop", msg: nil,
 			fail:       map[string]string{"answerCallbackQuery": "Bad Request: query is too old"},
-			wantAnswer: CallbackInvalidMessage,
+			wantAnswer: callbackInvalidMessage,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			vb, f := newTestBot(t, tt.fail)
-			vb.handleCallbackQuery(&tgbotapi.CallbackQuery{ID: "q1", Data: tt.data, Message: tt.msg})
+			vb.handleCallbackQuery(&telego.CallbackQuery{ID: "q1", Data: tt.data, Message: tt.msg})
 
 			answers := f.byMethod("answerCallbackQuery")
 			if len(answers) != 1 {
@@ -193,7 +193,7 @@ func TestHandleCallbackQuery(t *testing.T) {
 // в прежнем формате callback data.
 func TestConfirmNewAdCallbackData(t *testing.T) {
 	vb, f := newTestBot(t, nil)
-	vb.confirmNewAd(testAuthorID, 10, tgbotapi.Message{MessageID: 42, Chat: tgbotapi.Chat{ID: testChannelID}})
+	vb.confirmNewAd(testAuthorID, 10, telego.Message{MessageID: 42, Chat: telego.Chat{ID: testChannelID}})
 
 	sent := f.byMethod("sendMessage")
 	if len(sent) != 1 {

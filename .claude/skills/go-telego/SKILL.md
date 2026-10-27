@@ -12,10 +12,10 @@ description: Правила работы с кодом этого Telegram-бо�
 
 ## Инварианты кода
 
-- **Одна горутина.** Обновления и тикер обрабатываются в `VBBot.Run` (`internal/bot/bot.go`). `mediamsg` — map без мьютекса. Новая горутина допустима только вместе с синхронизацией и тестом с `-race`.
+- **Одна горутина.** Обновления и тикер обрабатываются в `Bot.Run` (`internal/bot/bot.go`). `albums` — map без мьютекса. Новая горутина допустима только вместе с синхронизацией и тестом с `-race`.
 - **Никаких `os.Exit` / `panic` вне `main` (`cmd/telegram-bot`).** Ошибки запуска `run(getenv, stdout) int` (`cmd/telegram-bot/main.go`) логирует и возвращает код выхода, `main` передаёт его в `os.Exit`; тесты запуска — `cmd/telegram-bot/main_test.go`. Ошибка одного пользователя не должна останавливать бота. Ошибки логируются, пользователь получает понятный текст на русском, сырой текст ошибки API ему не показывается.
 - **Логи** — только `log/slog` с полями по правилам раздела «Логи» в `CLAUDE.md`, без `fmt`-подстановок в сообщение. Формат и вывод настраивает `internal/logging` (`NewHandler`, `Bootstrap`, `Setup`, `BotOptions` для telego); свой обработчик не заводи. Пакет `log` не используй.
-- **Время** бери через `vbbot.clock()`, а не `time.Now()`: в тестах его подменяет `useFakeClock`.
+- **Время** бери через `b.clock()`, а не `time.Now()`: в тестах его подменяет `useFakeClock`.
 - **Конфиг** читается только через `config.Load` (`internal/config`) — чистую функцию без логов: некорректные значения заменяются умолчаниями и возвращаются списком `config.Warning`, а `run` (`cmd/telegram-bot/main.go`) пишет их после настройки файла логов. Прямой `os.Getenv` вне `main` не используй (`run` получает `getenv` параметром). Новая переменная окружения — поле в `config.Config`, разбор в `Load`, случай в `TestLoad` и описание в `CLAUDE.md` (и в README, когда он появится).
 - **Тексты для пользователей** — константы в `internal/bot/phrases.go`, на русском; вид поста (`post.DeprecatedPrefix`, `post.AuthorSuffix`) — в `internal/post`.
 - **nil-проверки** для всего, что Telegram может не прислать: `Message.From`, `ReplyToMessage`, недоступное `CallbackQuery.Message` (`IsAccessible()`). После ответа об ошибке обязательно `return`.
@@ -33,7 +33,7 @@ description: Правила работы с кодом этого Telegram-бо�
 ## Callback data
 
 - Формат: `<действие>_<chatID>_<messageID>`, лимит Telegram — **64 байта**.
-- chatID из callback data сверяй с `channelId`, клиентским данным не доверяй.
+- chatID из callback data сверяй с `channelID`, клиентским данным не доверяй.
 - Новые действия добавляй константами и через общую пару encode/decode, а не через ручной `strings.Split`.
 
 ## Медиагруппы

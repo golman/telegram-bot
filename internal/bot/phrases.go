@@ -7,61 +7,61 @@ import "fmt"
 
 // Приём объявления: ответы автору до публикации.
 const (
-	// NotSubscribedMessage — автор не состоит в канале.
-	NotSubscribedMessage = "Вы не подписаны на канал"
-	// AuthCheckFailedMessage — Telegram не ответил на проверку подписки.
-	AuthCheckFailedMessage = "Не удалось проверить подписку на канал. Попробуйте позже"
-	// FiltersFailedMessage — объявление отклонено фильтрами.
-	FiltersFailedMessage = "Сообщение не прошло фильтры и не будет отправлено в канал"
-	// EmptyMessage — у объявления нет текста или подписи.
-	EmptyMessage = "Сообщение не может быть пустым"
-	// UnsupportedMessage — сообщение не текст и не фото.
-	UnsupportedMessage = "Такие сообщения не принимаются. Отправьте объявление текстом или фото с подписью"
-	// PostTooLongMessage — шаблон: на сколько сократить текст и слово «символ»
+	// notSubscribedMessage — автор не состоит в канале.
+	notSubscribedMessage = "Вы не подписаны на канал"
+	// authCheckFailedMessage — Telegram не ответил на проверку подписки.
+	authCheckFailedMessage = "Не удалось проверить подписку на канал. Попробуйте позже"
+	// filtersFailedMessage — объявление отклонено фильтрами.
+	filtersFailedMessage = "Сообщение не прошло фильтры и не будет отправлено в канал"
+	// emptyMessage — у объявления нет текста или подписи.
+	emptyMessage = "Сообщение не может быть пустым"
+	// unsupportedMessage — сообщение не текст и не фото.
+	unsupportedMessage = "Такие сообщения не принимаются. Отправьте объявление текстом или фото с подписью"
+	// postTooLongMessage — шаблон: на сколько сократить текст и слово «символ»
 	// в нужной форме (см. postTooLongText).
-	PostTooLongMessage = "Объявление слишком длинное: сократите текст примерно на %d %s и отправьте заново"
+	postTooLongMessage = "Объявление слишком длинное: сократите текст примерно на %d %s и отправьте заново"
 )
 
 // Альбомы.
 const (
-	// MediaGroupDelayMessage — альбом принят и будет опубликован после всех фото.
-	MediaGroupDelayMessage = "Альбом будет опубликован, как только загрузятся все фото"
-	// AlbumItemLateMessage — фото альбома пришли после его публикации.
-	AlbumItemLateMessage = "Часть фото из альбома пришла после публикации и не попала в объявление. Если они нужны, отправьте объявление заново одним альбомом"
-	// AlbumSkippedMessage — в опубликованном альбоме были видео или файлы, они пропущены.
-	AlbumSkippedMessage = "Видео и файлы из альбома не опубликованы: принимаются только фото"
+	// mediaGroupDelayMessage — альбом принят и будет опубликован после всех фото.
+	mediaGroupDelayMessage = "Альбом будет опубликован, как только загрузятся все фото"
+	// albumItemLateMessage — фото альбома пришли после его публикации.
+	albumItemLateMessage = "Часть фото из альбома пришла после публикации и не попала в объявление. Если они нужны, отправьте объявление заново одним альбомом"
+	// albumSkippedMessage — в опубликованном альбоме были видео или файлы, они пропущены.
+	albumSkippedMessage = "Видео и файлы из альбома не опубликованы: принимаются только фото"
 )
 
 // Публикация.
 const (
-	// AdPublishedMessage — подтверждение публикации, к нему прикреплена кнопка.
-	AdPublishedMessage = "Объявление опубликовано.\nНажми на кнопку чтобы отметить как неактуальное."
-	// PublishFailedMessage — объявление не удалось отправить в канал.
-	PublishFailedMessage = "Не удалось опубликовать объявление в канале. Попробуйте позже"
-	// ConfirmFailedMessage — пост в канале есть, но подтверждение с кнопкой не ушло.
-	ConfirmFailedMessage = "Объявление опубликовано, но кнопку «Не актуально» отправить не удалось"
+	// adPublishedMessage — подтверждение публикации, к нему прикреплена кнопка.
+	adPublishedMessage = "Объявление опубликовано.\nНажми на кнопку чтобы отметить как неактуальное."
+	// publishFailedMessage — объявление не удалось отправить в канал.
+	publishFailedMessage = "Не удалось опубликовать объявление в канале. Попробуйте позже"
+	// confirmFailedMessage — пост в канале есть, но подтверждение с кнопкой не ушло.
+	confirmFailedMessage = "Объявление опубликовано, но кнопку «Не актуально» отправить не удалось"
 )
 
 // Кнопки под подтверждением и ответы на их нажатие.
 const (
-	// DeprecateButton помечает объявление неактуальным.
-	DeprecateButton = "Не актуально"
-	// RestoreButton снимает пометку.
-	RestoreButton = "Восстановить"
+	// deprecateButton помечает объявление неактуальным.
+	deprecateButton = "Не актуально"
+	// restoreButton снимает пометку.
+	restoreButton = "Восстановить"
 
-	// AdDeprecatedMessage — объявление помечено неактуальным.
-	AdDeprecatedMessage = "Объявление помечено как неактуальное"
-	// AdRestoredMessage — пометка снята.
-	AdRestoredMessage = "Объявление восстановлено"
-	// CallbackInvalidMessage — callback data не разобрались или ведут не в канал бота.
-	CallbackInvalidMessage = "Кнопка устарела или повреждена"
-	// OriginalMessageMissingMessage — исходное сообщение автора удалено или недоступно.
-	OriginalMessageMissingMessage = "Исходное сообщение не найдено, изменить объявление нельзя"
-	// ChannelEditFailedMessage — Telegram не дал изменить пост в канале.
-	ChannelEditFailedMessage = "Не удалось изменить объявление в канале"
+	// adDeprecatedMessage — объявление помечено неактуальным.
+	adDeprecatedMessage = "Объявление помечено как неактуальное"
+	// adRestoredMessage — пометка снята.
+	adRestoredMessage = "Объявление восстановлено"
+	// callbackInvalidMessage — callback data не разобрались или ведут не в канал бота.
+	callbackInvalidMessage = "Кнопка устарела или повреждена"
+	// originalMessageMissingMessage — исходное сообщение автора удалено или недоступно.
+	originalMessageMissingMessage = "Исходное сообщение не найдено, изменить объявление нельзя"
+	// channelEditFailedMessage — Telegram не дал изменить пост в канале.
+	channelEditFailedMessage = "Не удалось изменить объявление в канале"
 )
 
-// postTooLongText возвращает PostTooLongMessage для превышения на over символов,
+// postTooLongText возвращает postTooLongMessage для превышения на over символов,
 // со словом «символ» в форме, согласованной с числом.
 func postTooLongText(over int) string {
 	word := "символов"
@@ -73,5 +73,5 @@ func postTooLongText(over int) string {
 			word = "символа"
 		}
 	}
-	return fmt.Sprintf(PostTooLongMessage, over, word)
+	return fmt.Sprintf(postTooLongMessage, over, word)
 }

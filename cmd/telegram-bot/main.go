@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/bot"
 	"github.com/golman/telegram-bot/internal/config"
@@ -41,8 +41,8 @@ func run(getenv func(string) string, stdout io.Writer) int {
 		return 1
 	}
 
-	opts := append(logging.BotOptions(cfg.Token, cfg.Log.Debug), tgbotapi.WithAPICaller(tgapi.NewCaller()))
-	client, err := tgbotapi.NewBot(cfg.Token, opts...)
+	opts := append(logging.BotOptions(cfg.Token, cfg.Log.Debug), telego.WithAPICaller(tgapi.NewCaller()))
+	client, err := telego.NewBot(cfg.Token, opts...)
 	if err != nil {
 		slog.Error("не удалось создать клиент Bot API", "err", err)
 		return 1
@@ -58,7 +58,7 @@ func run(getenv func(string) string, stdout io.Writer) int {
 		stop()
 	}()
 
-	updates, err := client.UpdatesViaLongPolling(ctx, &tgbotapi.GetUpdatesParams{Timeout: tgapi.LongPollTimeoutSeconds})
+	updates, err := client.UpdatesViaLongPolling(ctx, &telego.GetUpdatesParams{Timeout: tgapi.LongPollTimeoutSeconds})
 	if err != nil {
 		slog.Error("не удалось запустить long polling", "err", err)
 		return 1

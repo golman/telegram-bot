@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/post"
 	"github.com/golman/telegram-bot/internal/testutil"
@@ -16,20 +16,20 @@ import (
 // пустым массивом, бот не паникует, а логирует ошибку, сообщает автору
 // о неудаче и не отправляет подтверждение с кнопкой.
 func TestEmptySendMediaGroupResponse(t *testing.T) {
-	photo := &tgbotapi.Message{
+	photo := &telego.Message{
 		MessageID: 100,
 		Date:      1,
-		Chat:      tgbotapi.Chat{ID: testAuthorID, Type: "private"},
-		From:      &tgbotapi.User{ID: testAuthorID, FirstName: "Иван"},
-		Photo:     []tgbotapi.PhotoSize{{FileID: "p1"}},
+		Chat:      telego.Chat{ID: testAuthorID, Type: "private"},
+		From:      &telego.User{ID: testAuthorID, FirstName: "Иван"},
+		Photo:     []telego.PhotoSize{{FileID: "p1"}},
 		Caption:   "Продам",
 	}
 	tests := []struct {
 		name string
-		send func(b *VBBot)
+		send func(b *Bot)
 	}{
-		{"альбом", func(b *VBBot) { b.sendMediaGroup(pendingAlbum(MessageStateInit)) }},
-		{"одно фото", func(b *VBBot) { b.sendPhotoMessage(tgbotapi.Update{Message: photo}) }},
+		{"альбом", func(b *Bot) { b.sendMediaGroup(pendingAlbum(albumCollecting)) }},
+		{"одно фото", func(b *Bot) { b.sendPhotoMessage(telego.Update{Message: photo}) }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -58,46 +58,46 @@ func TestEmptySendMediaGroupResponse(t *testing.T) {
 
 // TestPostTooLong: объявление, которое не поместится в лимит Telegram
 // (с учётом приписки и пометки «Не актуально»), не отправляется в канал,
-// а автор получает PostTooLongMessage. Ровно на лимите пост публикуется.
+// а автор получает postTooLongMessage. Ровно на лимите пост публикуется.
 func TestPostTooLong(t *testing.T) {
-	author := &tgbotapi.User{ID: testAuthorID, FirstName: "Иван"}
+	author := &telego.User{ID: testAuthorID, FirstName: "Иван"}
 	limit := func(media bool) int {
 		return post.TextLimit(post.Source{AuthorID: author.ID, AuthorName: post.DisplayName(*author), Media: media})
 	}
-	plain := func(text string) func(b *VBBot) {
-		return func(b *VBBot) {
-			b.sendPlainMessage(tgbotapi.Update{Message: &tgbotapi.Message{
+	plain := func(text string) func(b *Bot) {
+		return func(b *Bot) {
+			b.sendPlainMessage(telego.Update{Message: &telego.Message{
 				MessageID: 100, Date: 1, From: author, Text: text,
-				Chat: tgbotapi.Chat{ID: testAuthorID, Type: "private"},
+				Chat: telego.Chat{ID: testAuthorID, Type: "private"},
 			}})
 		}
 	}
-	photo := func(text string) func(b *VBBot) {
-		return func(b *VBBot) {
-			b.sendPhotoMessage(tgbotapi.Update{Message: &tgbotapi.Message{
+	photo := func(text string) func(b *Bot) {
+		return func(b *Bot) {
+			b.sendPhotoMessage(telego.Update{Message: &telego.Message{
 				MessageID: 100, Date: 1, From: author, Caption: text,
-				Photo: []tgbotapi.PhotoSize{{FileID: "p1"}},
-				Chat:  tgbotapi.Chat{ID: testAuthorID, Type: "private"},
+				Photo: []telego.PhotoSize{{FileID: "p1"}},
+				Chat:  telego.Chat{ID: testAuthorID, Type: "private"},
 			}})
 		}
 	}
-	album := func(text string) func(b *VBBot) {
-		return func(b *VBBot) {
-			mm := pendingAlbum(MessageStateInit)
-			mm.caption = text
-			mm.originalmessageid = 100
-			b.sendMediaGroup(mm)
+	sendAlbum := func(text string) func(b *Bot) {
+		return func(b *Bot) {
+			a := pendingAlbum(albumCollecting)
+			a.caption = text
+			a.replyToID = 100
+			b.sendMediaGroup(a)
 		}
 	}
 	tests := []struct {
 		name    string
 		media   bool
-		send    func(text string) func(b *VBBot)
+		send    func(text string) func(b *Bot)
 		publish string // метод публикации в канал
 	}{
 		{"текст", false, plain, "sendMessage"},
 		{"одно фото", true, photo, "sendMediaGroup"},
-		{"альбом", true, album, "sendMediaGroup"},
+		{"альбом", true, sendAlbum, "sendMediaGroup"},
 	}
 	for _, tt := range tests {
 		n := limit(tt.media)
@@ -151,7 +151,7 @@ func TestPostTooLongText(t *testing.T) {
 		{5, "символов"}, {11, "символов"}, {12, "символов"}, {14, "символов"}, {111, "символов"}, {100, "символов"},
 	}
 	for _, tt := range tests {
-		want := fmt.Sprintf(PostTooLongMessage, tt.over, tt.want)
+		want := fmt.Sprintf(postTooLongMessage, tt.over, tt.want)
 		if got := postTooLongText(tt.over); got != want {
 			t.Errorf("postTooLongText(%d) = %q, ожидалось %q", tt.over, got, want)
 		}
@@ -162,49 +162,49 @@ func TestPostTooLongText(t *testing.T) {
 // текст, а описание ошибки Telegram попадает только в лог.
 func TestPublishErrorHidesAPIText(t *testing.T) {
 	const apiDesc = "Bad Request: chat not found"
-	author := &tgbotapi.User{ID: testAuthorID, FirstName: "Иван"}
-	chat := tgbotapi.Chat{ID: testAuthorID, Type: "private"}
+	author := &telego.User{ID: testAuthorID, FirstName: "Иван"}
+	chat := telego.Chat{ID: testAuthorID, Type: "private"}
 	tests := []struct {
 		name   string
 		method string
-		send   func(b *VBBot)
+		send   func(b *Bot)
 		// wantTexts — тексты всех sendMessage автору по порядку.
 		wantTexts []string
 	}{
 		{
 			name: "текст", method: "sendMessage",
-			send: func(b *VBBot) {
-				b.sendPlainMessage(tgbotapi.Update{Message: &tgbotapi.Message{MessageID: 100, Date: 1, From: author, Chat: chat, Text: "Продам"}})
+			send: func(b *Bot) {
+				b.sendPlainMessage(telego.Update{Message: &telego.Message{MessageID: 100, Date: 1, From: author, Chat: chat, Text: "Продам"}})
 			},
-			wantTexts: []string{PublishFailedMessage},
+			wantTexts: []string{publishFailedMessage},
 		},
 		{
 			name: "одно фото", method: "sendMediaGroup",
-			send: func(b *VBBot) {
-				b.sendPhotoMessage(tgbotapi.Update{Message: &tgbotapi.Message{MessageID: 100, Date: 1, From: author, Chat: chat,
-					Caption: "Продам", Photo: []tgbotapi.PhotoSize{{FileID: "p1"}}}})
+			send: func(b *Bot) {
+				b.sendPhotoMessage(telego.Update{Message: &telego.Message{MessageID: 100, Date: 1, From: author, Chat: chat,
+					Caption: "Продам", Photo: []telego.PhotoSize{{FileID: "p1"}}}})
 			},
-			wantTexts: []string{PublishFailedMessage},
+			wantTexts: []string{publishFailedMessage},
 		},
 		{
 			name: "альбом", method: "sendMediaGroup",
-			send:      func(b *VBBot) { b.sendMediaGroup(pendingAlbum(MessageStateInit)) },
-			wantTexts: []string{PublishFailedMessage},
+			send:      func(b *Bot) { b.sendMediaGroup(pendingAlbum(albumCollecting)) },
+			wantTexts: []string{publishFailedMessage},
 		},
 		{
 			// Пост опубликован, но подтверждение с кнопкой не ушло.
 			name: "подтверждение", method: "sendMessage",
-			send: func(b *VBBot) {
-				b.confirmNewAd(testAuthorID, 100, tgbotapi.Message{MessageID: 900, Chat: tgbotapi.Chat{ID: testChannelID}})
+			send: func(b *Bot) {
+				b.confirmNewAd(testAuthorID, 100, telego.Message{MessageID: 900, Chat: telego.Chat{ID: testChannelID}})
 			},
-			wantTexts: []string{AdPublishedMessage, ConfirmFailedMessage},
+			wantTexts: []string{adPublishedMessage, confirmFailedMessage},
 		},
 		{
 			// Служебное сообщение автору не ушло: второе сообщение тоже не дойдёт,
 			// поэтому ошибка только логируется.
 			name: "служебное сообщение", method: "sendMessage",
-			send:      func(b *VBBot) { b.sendTextMessage(NotSubscribedMessage, testAuthorID) },
-			wantTexts: []string{NotSubscribedMessage},
+			send:      func(b *Bot) { b.sendTextMessage(notSubscribedMessage, testAuthorID) },
+			wantTexts: []string{notSubscribedMessage},
 		},
 	}
 	for _, tt := range tests {

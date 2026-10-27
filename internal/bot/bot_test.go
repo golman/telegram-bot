@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/testutil"
 )
 
-// runStart запускает Run и ждёт его возврата не дольше секунды.
-func runStart(t *testing.T, b *VBBot, ctx context.Context, ch <-chan tgbotapi.Update) error {
+// runBot запускает Run и ждёт его возврата не дольше секунды.
+func runBot(t *testing.T, b *Bot, ctx context.Context, ch <-chan telego.Update) error {
 	t.Helper()
 	if b.ticker == nil {
 		// Тикер не должен сработать во время теста: шаги tick() проверяются отдельно.
@@ -37,13 +37,13 @@ func cancelledContext() context.Context {
 	return ctx
 }
 
-func TestStartStopsOnShutdown(t *testing.T) {
+func TestRunStopsOnShutdown(t *testing.T) {
 	logs := testutil.CaptureLog(t)
-	b := &VBBot{mediamsg: map[string]*MediaMessage{}}
-	ch := make(chan tgbotapi.Update)
+	b := &Bot{albums: map[string]*album{}}
+	ch := make(chan telego.Update)
 	close(ch)
 
-	if err := runStart(t, b, cancelledContext(), ch); err != nil {
+	if err := runBot(t, b, cancelledContext(), ch); err != nil {
 		t.Fatalf("Run при остановке вернул ошибку %v, ожидался nil", err)
 	}
 	if out := logs.String(); !strings.Contains(out, "бот остановлен") {
@@ -51,13 +51,13 @@ func TestStartStopsOnShutdown(t *testing.T) {
 	}
 }
 
-// TestStartWaitsForUpdatesClose: после отмены ctx Run не выходит сам,
+// TestRunWaitsForUpdatesClose: после отмены ctx Run не выходит сам,
 // а ждёт, пока telego закроет канал. Иначе обновления, которые ещё лежат
 // в буфере канала, были бы потеряны.
-func TestStartWaitsForUpdatesClose(t *testing.T) {
+func TestRunWaitsForUpdatesClose(t *testing.T) {
 	testutil.CaptureLog(t)
-	b := &VBBot{mediamsg: map[string]*MediaMessage{}, ticker: time.NewTicker(time.Hour)}
-	ch := make(chan tgbotapi.Update)
+	b := &Bot{albums: map[string]*album{}, ticker: time.NewTicker(time.Hour)}
+	ch := make(chan telego.Update)
 	done := make(chan error, 1)
 	go func() { done <- b.Run(cancelledContext(), ch) }()
 
@@ -77,16 +77,16 @@ func TestStartWaitsForUpdatesClose(t *testing.T) {
 	}
 }
 
-// TestStartFailsWhenUpdatesClosedUnexpectedly: канал закрылся без остановки,
+// TestRunFailsWhenUpdatesClosedUnexpectedly: канал закрылся без остановки,
 // Run возвращает ошибку, чтобы run вернул код 1
 // и supervisor перезапустил бота.
-func TestStartFailsWhenUpdatesClosedUnexpectedly(t *testing.T) {
+func TestRunFailsWhenUpdatesClosedUnexpectedly(t *testing.T) {
 	testutil.CaptureLog(t)
-	b := &VBBot{mediamsg: map[string]*MediaMessage{}}
-	ch := make(chan tgbotapi.Update)
+	b := &Bot{albums: map[string]*album{}}
+	ch := make(chan telego.Update)
 	close(ch)
 
-	err := runStart(t, b, context.Background(), ch)
+	err := runBot(t, b, context.Background(), ch)
 	if err == nil {
 		t.Fatal("Run вернул nil, ожидалась ошибка о закрытии канала обновлений")
 	}
@@ -95,29 +95,29 @@ func TestStartFailsWhenUpdatesClosedUnexpectedly(t *testing.T) {
 	}
 }
 
-// TestStartFlushesPendingAlbums: при остановке накопленные альбомы
+// TestRunFlushesPendingAlbums: при остановке накопленные альбомы
 // публикуются сразу, не дожидаясь тикера, а уже отправленные — нет.
-func TestStartFlushesPendingAlbums(t *testing.T) {
+func TestRunFlushesPendingAlbums(t *testing.T) {
 	testutil.CaptureLog(t)
 	b, f := newTestBot(t, nil)
-	album := func(photo string, state MessageState) *MediaMessage {
-		return &MediaMessage{
-			fileid:   []string{photo},
-			fullname: "Иван",
-			userid:   testAuthorID,
-			caption:  "Продам",
-			state:    state,
+	albumWith := func(photo string, state albumState) *album {
+		return &album{
+			fileIDs:    []string{photo},
+			authorName: "Иван",
+			authorID:   testAuthorID,
+			caption:    "Продам",
+			state:      state,
 		}
 	}
-	b.mediamsg = map[string]*MediaMessage{
-		"init":    album("p-init", MessageStateInit),
-		"tobe":    album("p-tobe", MessageStateInit),
-		"already": album("p-already", MessageStateToDelete),
+	b.albums = map[string]*album{
+		"init":    albumWith("p-init", albumCollecting),
+		"tobe":    albumWith("p-tobe", albumCollecting),
+		"already": albumWith("p-already", albumDone),
 	}
-	ch := make(chan tgbotapi.Update)
+	ch := make(chan telego.Update)
 	close(ch)
 
-	if err := runStart(t, b, cancelledContext(), ch); err != nil {
+	if err := runBot(t, b, cancelledContext(), ch); err != nil {
 		t.Fatalf("Run вернул ошибку: %v", err)
 	}
 
@@ -130,24 +130,24 @@ func TestStartFlushesPendingAlbums(t *testing.T) {
 	if !reflect.DeepEqual(sent, want) {
 		t.Errorf("опубликованы альбомы %v, ожидались %v", sent, want)
 	}
-	if len(b.mediamsg) != 0 {
-		t.Errorf("после остановки осталось медиагрупп: %d", len(b.mediamsg))
+	if len(b.albums) != 0 {
+		t.Errorf("после остановки осталось медиагрупп: %d", len(b.albums))
 	}
 }
 
-// TestStartDrainsBufferedUpdates: обновления, которые telego уже положил
+// TestRunDrainsBufferedUpdates: обновления, которые telego уже положил
 // в буфер канала, обрабатываются до выхода. Telegram считает их доставленными,
 // и без обработки они бы пропали. Альбом из буфера публикуется при остановке.
-func TestStartDrainsBufferedUpdates(t *testing.T) {
+func TestRunDrainsBufferedUpdates(t *testing.T) {
 	testutil.CaptureLog(t)
 	b, f := newTestBot(t, nil)
-	b.mediamsg = map[string]*MediaMessage{}
-	ch := make(chan tgbotapi.Update, 2)
-	ch <- tgbotapi.Update{UpdateID: 1, Message: albumItem(100, "p1", "Продам", nil)}
-	ch <- tgbotapi.Update{UpdateID: 2, Message: albumItem(101, "p2", "", nil)}
+	b.albums = map[string]*album{}
+	ch := make(chan telego.Update, 2)
+	ch <- telego.Update{UpdateID: 1, Message: albumItem(100, "p1", "Продам", nil)}
+	ch <- telego.Update{UpdateID: 2, Message: albumItem(101, "p2", "", nil)}
 	close(ch)
 
-	if err := runStart(t, b, cancelledContext(), ch); err != nil {
+	if err := runBot(t, b, cancelledContext(), ch); err != nil {
 		t.Fatalf("Run вернул ошибку: %v", err)
 	}
 
@@ -163,19 +163,19 @@ func TestStartDrainsBufferedUpdates(t *testing.T) {
 // TestDispatchRecoversFromPanic проверяет, что паника в обработчике
 // не выходит из dispatch и попадает в лог со стеком.
 //
-// Источник паники: у VBBot нет клиента (tgbot == nil), а handleCallbackQuery
-// в defer всегда вызывает tgbot.AnswerCallbackQuery. Пустые callback data
+// Источник паники: у Bot нет клиента (client == nil), а handleCallbackQuery
+// в defer всегда вызывает client.AnswerCallbackQuery. Пустые callback data
 // не разбираются, обработчик сразу выходит, и defer разыменовывает nil-клиент.
 // Если этот путь перестанет паниковать (например, появится проверка
-// tgbot != nil) и тест упадёт с «в логе нет паники», замени источник
+// client != nil) и тест упадёт с «в логе нет паники», замени источник
 // паники в тесте, а не чини dispatch.
 //
 // Запросов к API здесь быть не может: клиента нет, поэтому фейковый API
 // не нужен.
 func TestDispatchRecoversFromPanic(t *testing.T) {
 	logs := testutil.CaptureLog(t)
-	b := &VBBot{}
-	update := tgbotapi.Update{UpdateID: 7, CallbackQuery: &tgbotapi.CallbackQuery{ID: "q"}}
+	b := &Bot{}
+	update := telego.Update{UpdateID: 7, CallbackQuery: &telego.CallbackQuery{ID: "q"}}
 
 	b.dispatch(update)
 
@@ -187,15 +187,15 @@ func TestDispatchRecoversFromPanic(t *testing.T) {
 	}
 }
 
-// Источник паники в тестах ниже: у VBBot нет клиента (tgbot == nil),
-// и sendMediaGroup паникует на вызове tgbot.SendMediaGroup. Если этот путь
+// Источник паники в тестах ниже: у Bot нет клиента (client == nil),
+// и sendMediaGroup паникует на вызове client.SendMediaGroup. Если этот путь
 // перестанет паниковать, замени источник паники, а не чини recover.
 
 // TestTickRecoversFromAlbumPanic: паника при отправке альбома по тикеру
 // логируется, не роняет процесс и не повторяется на следующих тиках.
 func TestTickRecoversFromAlbumPanic(t *testing.T) {
 	logs := testutil.CaptureLog(t)
-	b := &VBBot{mediamsg: map[string]*MediaMessage{"album": pendingAlbum(MessageStateInit)}}
+	b := &Bot{albums: map[string]*album{"album": pendingAlbum(albumCollecting)}}
 	clock := useFakeClock(b)
 
 	b.tick()
@@ -204,8 +204,8 @@ func TestTickRecoversFromAlbumPanic(t *testing.T) {
 	if !strings.Contains(out, `msg="паника при отправке альбома"`) || !strings.Contains(out, "media_group_id=album") || !strings.Contains(out, "goroutine") {
 		t.Fatalf("в логе нет паники со стеком:\n%s", out)
 	}
-	if got := b.mediamsg["album"].state; got != MessageStateToDelete {
-		t.Fatalf("после паники состояние альбома %d, ожидалось ToDelete (%d)", got, MessageStateToDelete)
+	if got := b.albums["album"].state; got != albumDone {
+		t.Fatalf("после паники состояние альбома %d, ожидалось albumDone (%d)", got, albumDone)
 	}
 
 	for elapsed := time.Duration(0); elapsed < albumLateWindow; elapsed += albumTickInterval {
@@ -214,8 +214,8 @@ func TestTickRecoversFromAlbumPanic(t *testing.T) {
 	if n := strings.Count(logs.String(), "паника при отправке альбома"); n != 1 {
 		t.Errorf("паника в логе %d раз, отправка не должна повторяться", n)
 	}
-	if len(b.mediamsg) != 0 {
-		t.Errorf("после окна ожидания осталось медиагрупп: %d", len(b.mediamsg))
+	if len(b.albums) != 0 {
+		t.Errorf("после окна ожидания осталось медиагрупп: %d", len(b.albums))
 	}
 }
 
@@ -223,9 +223,9 @@ func TestTickRecoversFromAlbumPanic(t *testing.T) {
 // не мешает очистить накопитель и не выходит из flushMediaGroups.
 func TestFlushRecoversFromAlbumPanic(t *testing.T) {
 	logs := testutil.CaptureLog(t)
-	b := &VBBot{mediamsg: map[string]*MediaMessage{
-		"a": pendingAlbum(MessageStateInit),
-		"b": pendingAlbum(MessageStateInit),
+	b := &Bot{albums: map[string]*album{
+		"a": pendingAlbum(albumCollecting),
+		"b": pendingAlbum(albumCollecting),
 	}}
 
 	b.flushMediaGroups()
@@ -233,7 +233,7 @@ func TestFlushRecoversFromAlbumPanic(t *testing.T) {
 	if n := strings.Count(logs.String(), "паника при отправке альбома"); n != 2 {
 		t.Errorf("паника в логе %d раз, ожидалось по одной на каждый альбом:\n%s", n, logs.String())
 	}
-	if len(b.mediamsg) != 0 {
-		t.Errorf("после остановки осталось медиагрупп: %d", len(b.mediamsg))
+	if len(b.albums) != 0 {
+		t.Errorf("после остановки осталось медиагрупп: %d", len(b.albums))
 	}
 }

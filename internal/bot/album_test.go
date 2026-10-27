@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/post"
 	"github.com/golman/telegram-bot/internal/testutil"
@@ -14,12 +14,12 @@ import (
 
 // pressButton нажимает кнопку с callback data data под подтверждением,
 // которое отвечает на reply, и возвращает текст ответа на callback.
-func pressButton(t *testing.T, vb *VBBot, f *fakeAPI, id, data string, reply *tgbotapi.Message) string {
+func pressButton(t *testing.T, vb *Bot, f *fakeAPI, id, data string, reply *telego.Message) string {
 	t.Helper()
 	before := len(f.byMethod("answerCallbackQuery"))
-	vb.handleCallbackQuery(&tgbotapi.CallbackQuery{
+	vb.handleCallbackQuery(&telego.CallbackQuery{
 		ID:      id,
-		From:    tgbotapi.User{ID: testAuthorID, FirstName: "Иван"},
+		From:    telego.User{ID: testAuthorID, FirstName: "Иван"},
 		Data:    data,
 		Message: confirmMsg(reply),
 	})
@@ -36,26 +36,26 @@ func pressButton(t *testing.T, vb *VBBot, f *fakeAPI, id, data string, reply *tg
 // Тикер не запускается: время двигает fakeClock, шаги выполняются вызовами tick().
 func TestAlbumEndToEnd(t *testing.T) {
 	// «Продам» — 6 UTF-16 units, пробел — 1, 🚲 — 2 (вне BMP).
-	bold := []tgbotapi.MessageEntity{{Type: "bold", Offset: 0, Length: 6}}
-	italic := []tgbotapi.MessageEntity{{Type: "italic", Offset: 0, Length: 3}}
+	bold := []telego.MessageEntity{{Type: "bold", Offset: 0, Length: 6}}
+	italic := []telego.MessageEntity{{Type: "italic", Offset: 0, Length: 3}}
 
 	tests := []struct {
 		name       string
 		cap1, cap2 string
-		ent1, ent2 []tgbotapi.MessageEntity
+		ent1, ent2 []telego.MessageEntity
 		// wantReplyTo — индекс элемента, на который отвечает подтверждение;
 		// -1, если альбом не публикуется.
 		wantReplyTo int
 		wantCaption string
 		// wantEntities — entities подписи при публикации.
-		wantEntities []tgbotapi.MessageEntity
+		wantEntities []telego.MessageEntity
 	}{
 		{
 			name: "подпись на втором фото", cap2: "Продам 🚲", ent2: bold,
 			wantReplyTo: 1,
 			wantCaption: "Продам 🚲" + post.AuthorSuffix + "Иван",
-			wantEntities: []tgbotapi.MessageEntity{
-				{Type: "text_mention", Offset: 16, Length: 4, User: &tgbotapi.User{ID: testAuthorID}},
+			wantEntities: []telego.MessageEntity{
+				{Type: "text_mention", Offset: 16, Length: 4, User: &telego.User{ID: testAuthorID}},
 				{Type: "bold", Offset: 0, Length: 6},
 			},
 		},
@@ -63,8 +63,8 @@ func TestAlbumEndToEnd(t *testing.T) {
 			name: "подпись на первом фото", cap1: "Продам 🚲", ent1: bold,
 			wantReplyTo: 0,
 			wantCaption: "Продам 🚲" + post.AuthorSuffix + "Иван",
-			wantEntities: []tgbotapi.MessageEntity{
-				{Type: "text_mention", Offset: 16, Length: 4, User: &tgbotapi.User{ID: testAuthorID}},
+			wantEntities: []telego.MessageEntity{
+				{Type: "text_mention", Offset: 16, Length: 4, User: &telego.User{ID: testAuthorID}},
 				{Type: "bold", Offset: 0, Length: 6},
 			},
 		},
@@ -73,8 +73,8 @@ func TestAlbumEndToEnd(t *testing.T) {
 			name: "подписи на обоих фото", cap1: "Первая", ent1: bold, cap2: "Вторая", ent2: italic,
 			wantReplyTo: 1,
 			wantCaption: "Вторая" + post.AuthorSuffix + "Иван",
-			wantEntities: []tgbotapi.MessageEntity{
-				{Type: "text_mention", Offset: 13, Length: 4, User: &tgbotapi.User{ID: testAuthorID}},
+			wantEntities: []telego.MessageEntity{
+				{Type: "text_mention", Offset: 13, Length: 4, User: &telego.User{ID: testAuthorID}},
 				{Type: "italic", Offset: 0, Length: 3},
 			},
 		},
@@ -83,17 +83,17 @@ func TestAlbumEndToEnd(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			vb, f := newTestBot(t, nil)
-			vb.mediamsg = map[string]*MediaMessage{}
+			vb.albums = map[string]*album{}
 			clock := useFakeClock(vb)
 			// Авторизацию покрывает auth_test.go.
-			vb.cfg.authEnabled = false
+			vb.authEnabled = false
 
-			items := []*tgbotapi.Message{
+			items := []*telego.Message{
 				albumItem(100, "p1", tt.cap1, tt.ent1),
 				albumItem(101, "p2", tt.cap2, tt.ent2),
 			}
 			for _, m := range items {
-				vb.handleUpdate(tgbotapi.Update{Message: m})
+				vb.handleUpdate(telego.Update{Message: m})
 			}
 
 			// Пока тишина короче albumQuietPeriod, альбом ждёт остальные фото.
@@ -108,7 +108,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 			sent := f.byMethod("sendMessage")
 			delays := 0
 			for _, c := range sent {
-				if jsonString(t, c.body, "text") == MediaGroupDelayMessage {
+				if jsonString(t, c.body, "text") == mediaGroupDelayMessage {
 					delays++
 				}
 				if got := jsonInt(t, c.body, "chat_id"); got != testAuthorID {
@@ -121,7 +121,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 				wantDelays = 0
 			}
 			if delays != wantDelays {
-				t.Errorf("%q отправлено %d раз, ожидалось %d", MediaGroupDelayMessage, delays, wantDelays)
+				t.Errorf("%q отправлено %d раз, ожидалось %d", mediaGroupDelayMessage, delays, wantDelays)
 			}
 
 			if tt.wantReplyTo < 0 {
@@ -131,7 +131,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 				if len(sent) != 1 {
 					t.Fatalf("sendMessage вызван %d раз, ожидался один отказ", len(sent))
 				}
-				if got, want := jsonString(t, sent[0].body, "text"), EmptyMessage; got != want {
+				if got, want := jsonString(t, sent[0].body, "text"), emptyMessage; got != want {
 					t.Errorf("сообщение автору = %q, ожидалось %q", got, want)
 				}
 				return
@@ -177,7 +177,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 			}
 			confirm := sent[1].body
 			replyID := jsonInt(t, jsonField[map[string]any](t, confirm, "reply_parameters"), "message_id")
-			var reply *tgbotapi.Message
+			var reply *telego.Message
 			for _, m := range items {
 				if int64(m.MessageID) == replyID {
 					reply = m
@@ -192,8 +192,8 @@ func TestAlbumEndToEnd(t *testing.T) {
 
 			// delete: подпись с префиксом, entities автора сдвинуты на префикс.
 			deleteData := jsonString(t, onlyButton(t, confirm), "callback_data")
-			if got := pressButton(t, vb, f, "q-delete", deleteData, reply); got != AdDeprecatedMessage {
-				t.Errorf("ответ на delete = %q, ожидалось %q", got, AdDeprecatedMessage)
+			if got := pressButton(t, vb, f, "q-delete", deleteData, reply); got != adDeprecatedMessage {
+				t.Errorf("ответ на delete = %q, ожидалось %q", got, adDeprecatedMessage)
 			}
 			captions := f.byMethod("editMessageCaption")
 			if len(captions) != 1 {
@@ -227,8 +227,8 @@ func TestAlbumEndToEnd(t *testing.T) {
 				t.Fatalf("после delete editMessageText вызван %d раз, ожидался один", len(texts))
 			}
 			restoreData := jsonString(t, onlyButton(t, texts[0].body), "callback_data")
-			if got := pressButton(t, vb, f, "q-restore", restoreData, reply); got != AdRestoredMessage {
-				t.Errorf("ответ на restore = %q, ожидалось %q", got, AdRestoredMessage)
+			if got := pressButton(t, vb, f, "q-restore", restoreData, reply); got != adRestoredMessage {
+				t.Errorf("ответ на restore = %q, ожидалось %q", got, adRestoredMessage)
 			}
 			captions = f.byMethod("editMessageCaption")
 			if len(captions) != 2 {
@@ -252,11 +252,11 @@ func TestAlbumEndToEnd(t *testing.T) {
 // и затем удаляется.
 func TestLateAlbumItem(t *testing.T) {
 	vb, f := newTestBot(t, nil)
-	vb.mediamsg = map[string]*MediaMessage{}
-	vb.cfg.authEnabled = false
+	vb.albums = map[string]*album{}
+	vb.authEnabled = false
 	clock := useFakeClock(vb)
 
-	vb.handleUpdate(tgbotapi.Update{Message: albumItem(100, "p1", "Продам", nil)})
+	vb.handleUpdate(telego.Update{Message: albumItem(100, "p1", "Продам", nil)})
 	clock.wait(vb, albumQuietPeriod)
 	if got := len(f.byMethod("sendMediaGroup")); got != 1 {
 		t.Fatalf("sendMediaGroup вызван %d раз, ожидался один", got)
@@ -265,8 +265,8 @@ func TestLateAlbumItem(t *testing.T) {
 
 	// Окно ожидания почти истекло, а фото всё ещё приходят.
 	clock.wait(vb, albumLateWindow-time.Second)
-	vb.handleUpdate(tgbotapi.Update{Message: albumItem(101, "p2", "", nil)})
-	vb.handleUpdate(tgbotapi.Update{Message: albumItem(102, "p3", "", nil)})
+	vb.handleUpdate(telego.Update{Message: albumItem(101, "p2", "", nil)})
+	vb.handleUpdate(telego.Update{Message: albumItem(102, "p3", "", nil)})
 	clock.wait(vb, time.Second)
 
 	if got := len(f.byMethod("sendMediaGroup")); got != 1 {
@@ -276,14 +276,14 @@ func TestLateAlbumItem(t *testing.T) {
 	if len(sent) != 1 {
 		t.Fatalf("после опоздавших фото автору ушло %d сообщений, ожидалось одно", len(sent))
 	}
-	if got := jsonString(t, sent[0].body, "text"); got != AlbumItemLateMessage {
-		t.Errorf("автору ушло %q, ожидалось %q", got, AlbumItemLateMessage)
+	if got := jsonString(t, sent[0].body, "text"); got != albumItemLateMessage {
+		t.Errorf("автору ушло %q, ожидалось %q", got, albumItemLateMessage)
 	}
 	if got := jsonInt(t, sent[0].body, "chat_id"); got != testAuthorID {
 		t.Errorf("сообщение ушло в чат %d, ожидался чат автора %d", got, testAuthorID)
 	}
-	if len(vb.mediamsg) != 0 {
-		t.Errorf("после окна ожидания осталось медиагрупп: %d", len(vb.mediamsg))
+	if len(vb.albums) != 0 {
+		t.Errorf("после окна ожидания осталось медиагрупп: %d", len(vb.albums))
 	}
 }
 
@@ -293,15 +293,15 @@ func TestSentAlbumKeptForLateWindow(t *testing.T) {
 	testutil.CaptureLog(t)
 	vb, _ := newTestBot(t, nil)
 	clock := useFakeClock(vb)
-	vb.mediamsg = map[string]*MediaMessage{"album": pendingAlbum(MessageStateInit)}
+	vb.albums = map[string]*album{"album": pendingAlbum(albumCollecting)}
 
 	vb.tick()
 	clock.wait(vb, albumLateWindow-time.Second)
-	if _, ok := vb.mediamsg["album"]; !ok {
+	if _, ok := vb.albums["album"]; !ok {
 		t.Fatalf("альбом удалён раньше, чем через %s после отправки", albumLateWindow)
 	}
 	clock.wait(vb, time.Second)
-	if _, ok := vb.mediamsg["album"]; ok {
+	if _, ok := vb.albums["album"]; ok {
 		t.Fatalf("альбом не удалён через %s после отправки", albumLateWindow)
 	}
 }
@@ -312,19 +312,19 @@ func TestSentAlbumKeptForLateWindow(t *testing.T) {
 func TestAlbumQuietPeriod(t *testing.T) {
 	testutil.CaptureLog(t)
 	b, f := newTestBot(t, nil)
-	b.mediamsg = map[string]*MediaMessage{}
+	b.albums = map[string]*album{}
 	clock := useFakeClock(b)
 	sent := func() int { return len(f.byMethod("sendMediaGroup")) }
 
 	// Фото приходят с паузами чуть меньше периода тишины.
 	gap := albumQuietPeriod - time.Second
-	b.handleUpdate(tgbotapi.Update{Message: albumItem(100, "p1", "Продам", nil)})
+	b.handleUpdate(telego.Update{Message: albumItem(100, "p1", "Продам", nil)})
 	for i, id := range []int{101, 102, 103} {
 		clock.wait(b, gap)
 		if n := sent(); n != 0 {
 			t.Fatalf("альбом отправлен до фото %d, хотя тишины ещё не было", i+2)
 		}
-		b.handleUpdate(tgbotapi.Update{Message: albumItem(id, fmt.Sprintf("p%d", i+2), "", nil)})
+		b.handleUpdate(telego.Update{Message: albumItem(id, fmt.Sprintf("p%d", i+2), "", nil)})
 	}
 	clock.wait(b, gap)
 	if n := sent(); n != 0 {
@@ -352,35 +352,35 @@ func TestAlbumAuthOnce(t *testing.T) {
 	}{
 		{
 			name: "участник канала", member: chatMemberJSON("member"),
-			wantPublished: true, wantTexts: []string{MediaGroupDelayMessage, AdPublishedMessage},
+			wantPublished: true, wantTexts: []string{mediaGroupDelayMessage, adPublishedMessage},
 		},
 		{
 			name: "не участник канала", member: chatMemberJSON("left"),
-			wantTexts: []string{NotSubscribedMessage},
+			wantTexts: []string{notSubscribedMessage},
 		},
 		{
 			name: "сбой проверки подписки", fail: map[string]string{"getChatMember": "Bad Request: chat not found"},
-			wantTexts: []string{AuthCheckFailedMessage},
+			wantTexts: []string{authCheckFailedMessage},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			testutil.CaptureLog(t)
 			b, f := newTestBot(t, tt.fail)
-			b.mediamsg = map[string]*MediaMessage{}
-			b.cfg.authEnabled = true
+			b.albums = map[string]*album{}
+			b.authEnabled = true
 			clock := useFakeClock(b)
 			if tt.member != "" {
 				f.respond("getChatMember", tt.member)
 			}
 
 			// Подпись на втором фото, как часто бывает в клиентах Telegram.
-			for i, m := range []*tgbotapi.Message{
+			for i, m := range []*telego.Message{
 				albumItem(100, "p1", "", nil),
 				albumItem(101, "p2", "Продам", nil),
 				albumItem(102, "p3", "", nil),
 			} {
-				b.handleUpdate(tgbotapi.Update{UpdateID: i, Message: m})
+				b.handleUpdate(telego.Update{UpdateID: i, Message: m})
 				// Между фото альбома тикер успевает сработать: отклонённый
 				// альбом не должен исчезнуть и проверяться заново.
 				clock.wait(b, albumTickInterval)
@@ -414,15 +414,15 @@ func TestAlbumAuthOnce(t *testing.T) {
 func TestAlbumDelayPromise(t *testing.T) {
 	testutil.CaptureLog(t)
 	b, f := newTestBot(t, nil)
-	b.mediamsg = map[string]*MediaMessage{}
+	b.albums = map[string]*album{}
 	clock := useFakeClock(b)
-	b.handleUpdate(tgbotapi.Update{Message: albumItem(100, "p1", "", nil)})
-	b.handleUpdate(tgbotapi.Update{Message: albumItem(101, "p2", "", nil)})
+	b.handleUpdate(telego.Update{Message: albumItem(100, "p1", "", nil)})
+	b.handleUpdate(telego.Update{Message: albumItem(101, "p2", "", nil)})
 	if got := authorTexts(t, f); len(got) != 0 {
 		t.Errorf("до подписи автору ушли %q, ожидалось ничего", got)
 	}
 	clock.wait(b, albumQuietPeriod)
-	if got, want := authorTexts(t, f), []string{EmptyMessage}; !reflect.DeepEqual(got, want) {
+	if got, want := authorTexts(t, f), []string{emptyMessage}; !reflect.DeepEqual(got, want) {
 		t.Errorf("автору ушли %q, ожидалось %q", got, want)
 	}
 }

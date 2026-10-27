@@ -4,18 +4,18 @@ import (
 	"strings"
 	"testing"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/post"
 	"github.com/golman/telegram-bot/internal/testutil"
 )
 
 // authUpdate — обычное текстовое сообщение из личного чата пользователя.
-func authUpdate() tgbotapi.Update {
-	return tgbotapi.Update{Message: &tgbotapi.Message{
+func authUpdate() telego.Update {
+	return telego.Update{Message: &telego.Message{
 		MessageID: 10,
-		From:      &tgbotapi.User{ID: testAuthorID, FirstName: "Иван"},
-		Chat:      tgbotapi.Chat{ID: testAuthorID, Type: "private"},
+		From:      &telego.User{ID: testAuthorID, FirstName: "Иван"},
+		Chat:      telego.Chat{ID: testAuthorID, Type: "private"},
 		Text:      "Продам велосипед",
 	}}
 }
@@ -50,7 +50,7 @@ func TestHandleUpdateAuth(t *testing.T) {
 			authEnabled:    true,
 			fail:           map[string]string{"getChatMember": "Bad Request: chat not found"},
 			wantMemberCall: 1,
-			want:           []wantMessage{{chat: testAuthorID, textPrefix: AuthCheckFailedMessage}},
+			want:           []wantMessage{{chat: testAuthorID, textPrefix: authCheckFailedMessage}},
 			wantLog:        []string{`msg="не удалось проверить подписку"`, "user_id=42", "chat not found"},
 		},
 		{
@@ -58,7 +58,7 @@ func TestHandleUpdateAuth(t *testing.T) {
 			authEnabled:    true,
 			member:         chatMemberJSON("left"),
 			wantMemberCall: 1,
-			want:           []wantMessage{{chat: testAuthorID, textPrefix: NotSubscribedMessage}},
+			want:           []wantMessage{{chat: testAuthorID, textPrefix: notSubscribedMessage}},
 		},
 		{
 			name:           "участник канала",
@@ -74,12 +74,12 @@ func TestHandleUpdateAuth(t *testing.T) {
 			want:           published,
 		},
 	}
-	serviceTexts := []string{AuthCheckFailedMessage, NotSubscribedMessage, FiltersFailedMessage}
+	serviceTexts := []string{authCheckFailedMessage, notSubscribedMessage, filtersFailedMessage}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logs := testutil.CaptureLog(t)
 			b, api := newTestBot(t, tt.fail)
-			b.cfg.authEnabled = tt.authEnabled
+			b.authEnabled = tt.authEnabled
 			if tt.member != "" {
 				api.respond("getChatMember", tt.member)
 			}
@@ -113,8 +113,8 @@ func TestHandleUpdateAuth(t *testing.T) {
 					t.Errorf("sendMessage %d: кнопка %v, ожидалась %v", i, has, w.button)
 				} else if has {
 					btn := onlyButton(t, body)
-					if got := jsonString(t, btn, "text"); got != DeprecateButton {
-						t.Errorf("sendMessage %d: кнопка %q, ожидалась %q", i, got, DeprecateButton)
+					if got := jsonString(t, btn, "text"); got != deprecateButton {
+						t.Errorf("sendMessage %d: кнопка %q, ожидалась %q", i, got, deprecateButton)
 					}
 				}
 			}

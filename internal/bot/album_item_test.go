@@ -4,35 +4,35 @@ import (
 	"reflect"
 	"testing"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 )
 
-// TestMediaMessageAddItemCaption проверяет, что подпись альбома, её entities
+// TestAlbumAddItemCaption проверяет, что подпись альбома, её entities
 // и ID сообщения для подтверждения берутся с того элемента, где есть подпись.
-func TestMediaMessageAddItemCaption(t *testing.T) {
-	author := &tgbotapi.User{ID: testAuthorID, FirstName: "Иван"}
+func TestAlbumAddItemCaption(t *testing.T) {
+	author := &telego.User{ID: testAuthorID, FirstName: "Иван"}
 	// photo возвращает размеры одного фото по возрастанию, как их присылает Telegram.
-	photo := func(prefix string) []tgbotapi.PhotoSize {
-		return []tgbotapi.PhotoSize{
+	photo := func(prefix string) []telego.PhotoSize {
+		return []telego.PhotoSize{
 			{FileID: prefix + "-small", Width: 90, Height: 90},
 			{FileID: prefix + "-big", Width: 1280, Height: 1280},
 		}
 	}
-	boldEntities := []tgbotapi.MessageEntity{
-		{Type: tgbotapi.EntityTypeBold, Offset: 0, Length: 6},
+	boldEntities := []telego.MessageEntity{
+		{Type: telego.EntityTypeBold, Offset: 0, Length: 6},
 	}
-	italicEntities := []tgbotapi.MessageEntity{
-		{Type: tgbotapi.EntityTypeItalic, Offset: 0, Length: 5},
+	italicEntities := []telego.MessageEntity{
+		{Type: telego.EntityTypeItalic, Offset: 0, Length: 5},
 	}
 
 	tests := []struct {
 		name          string
 		caption1      string
-		entities1     []tgbotapi.MessageEntity
+		entities1     []telego.MessageEntity
 		caption2      string
-		entities2     []tgbotapi.MessageEntity
+		entities2     []telego.MessageEntity
 		wantCaption   string
-		wantEntities  []tgbotapi.MessageEntity
+		wantEntities  []telego.MessageEntity
 		wantOrigMsgID int
 	}{
 		{
@@ -71,7 +71,7 @@ func TestMediaMessageAddItemCaption(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			m1 := &tgbotapi.Message{
+			m1 := &telego.Message{
 				MessageID:       100,
 				From:            author,
 				MediaGroupID:    "g1",
@@ -79,7 +79,7 @@ func TestMediaMessageAddItemCaption(t *testing.T) {
 				Caption:         tt.caption1,
 				CaptionEntities: tt.entities1,
 			}
-			m2 := &tgbotapi.Message{
+			m2 := &telego.Message{
 				MessageID:       101,
 				From:            author,
 				MediaGroupID:    "g1",
@@ -88,27 +88,27 @@ func TestMediaMessageAddItemCaption(t *testing.T) {
 				CaptionEntities: tt.entities2,
 			}
 
-			mm := newMediaMessage(m1)
-			mm.addItem(m1)
-			mm.addItem(m2)
+			a := newAlbum(m1)
+			a.addItem(m1)
+			a.addItem(m2)
 
-			if mm.caption != tt.wantCaption {
-				t.Errorf("подпись = %q, ожидалось %q", mm.caption, tt.wantCaption)
+			if a.caption != tt.wantCaption {
+				t.Errorf("подпись = %q, ожидалось %q", a.caption, tt.wantCaption)
 			}
-			if !reflect.DeepEqual(mm.entities, tt.wantEntities) {
-				t.Errorf("entities = %+v, ожидалось %+v", mm.entities, tt.wantEntities)
+			if !reflect.DeepEqual(a.entities, tt.wantEntities) {
+				t.Errorf("entities = %+v, ожидалось %+v", a.entities, tt.wantEntities)
 			}
-			if mm.originalmessageid != tt.wantOrigMsgID {
-				t.Errorf("originalmessageid = %d, ожидалось %d", mm.originalmessageid, tt.wantOrigMsgID)
+			if a.replyToID != tt.wantOrigMsgID {
+				t.Errorf("replyToID = %d, ожидалось %d", a.replyToID, tt.wantOrigMsgID)
 			}
-			if want := []string{"p1-big", "p2-big"}; !reflect.DeepEqual(mm.fileid, want) {
-				t.Errorf("fileid = %v, ожидалось %v", mm.fileid, want)
+			if want := []string{"p1-big", "p2-big"}; !reflect.DeepEqual(a.fileIDs, want) {
+				t.Errorf("fileIDs = %v, ожидалось %v", a.fileIDs, want)
 			}
-			if mm.state != MessageStateInit {
-				t.Errorf("состояние = %v, ожидалось %v", mm.state, MessageStateInit)
+			if a.state != albumCollecting {
+				t.Errorf("состояние = %v, ожидалось %v", a.state, albumCollecting)
 			}
-			if mm.userid != testAuthorID || mm.fullname != "Иван" {
-				t.Errorf("автор = (%d, %q), ожидалось (%d, %q)", mm.userid, mm.fullname, testAuthorID, "Иван")
+			if a.authorID != testAuthorID || a.authorName != "Иван" {
+				t.Errorf("автор = (%d, %q), ожидалось (%d, %q)", a.authorID, a.authorName, testAuthorID, "Иван")
 			}
 		})
 	}

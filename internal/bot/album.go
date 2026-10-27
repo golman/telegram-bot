@@ -3,41 +3,41 @@ package bot
 import (
 	"time"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/post"
 )
 
-type MediaMessage struct {
-	fileid            []string
-	fullname          string
-	userid            int64
-	caption           string
-	entities          []tgbotapi.MessageEntity
-	state             MessageState
-	originalmessageid int
+type album struct {
+	fileIDs    []string
+	authorName string
+	authorID   int64
+	caption    string
+	entities   []telego.MessageEntity
+	state      albumState
+	replyToID  int
 	// lastItemAt — когда пришёл последний элемент; от него отсчитывается тишина.
 	lastItemAt time.Time
-	// expiresAt — когда удалить отправленный или отклонённый альбом (состояние ToDelete).
+	// expiresAt — когда удалить отправленный или отклонённый альбом (состояние albumDone).
 	expiresAt time.Time
-	// lateNotified — автор уже получил AlbumItemLateMessage.
+	// lateNotified — автор уже получил albumItemLateMessage.
 	lateNotified bool
 	// skipped — сколько элементов альбома не фото (видео, файлы); они не публикуются.
 	skipped int
 	// rejected — автор не прошёл проверку подписки или фильтры, элементы отбрасываются.
 	rejected bool
-	// promised — автору уже отправлено MediaGroupDelayMessage.
+	// promised — автору уже отправлено mediaGroupDelayMessage.
 	promised bool
 }
 
-type MessageState int
+type albumState int
 
 const (
-	// MessageStateInit — альбом собирается и ждёт albumQuietPeriod тишины.
-	MessageStateInit MessageState = iota
-	// MessageStateToDelete — альбом отправлен (или отклонён) и хранится до
+	// albumCollecting — альбом собирается и ждёт albumQuietPeriod тишины.
+	albumCollecting albumState = iota
+	// albumDone — альбом отправлен (или отклонён) и хранится до
 	// expiresAt, чтобы опоздавшие фото не создали новый альбом.
-	MessageStateToDelete
+	albumDone
 )
 
 const (
@@ -51,19 +51,19 @@ const (
 	albumTickInterval = time.Second
 )
 
-// newMediaMessage создаёт накопитель альбома по первому полученному элементу.
+// newAlbum создаёт накопитель альбома по первому полученному элементу.
 // Фото и подпись сюда не попадают: их добавляет addItem.
-func newMediaMessage(msg *tgbotapi.Message) *MediaMessage {
-	mm := &MediaMessage{
-		fileid:            []string{},
-		state:             MessageStateInit,
-		originalmessageid: msg.MessageID,
+func newAlbum(msg *telego.Message) *album {
+	a := &album{
+		fileIDs:   []string{},
+		state:     albumCollecting,
+		replyToID: msg.MessageID,
 	}
 	if msg.From != nil {
-		mm.fullname = post.DisplayName(*msg.From)
-		mm.userid = msg.From.ID
+		a.authorName = post.DisplayName(*msg.From)
+		a.authorID = msg.From.ID
 	}
-	return mm
+	return a
 }
 
 // addItem добавляет элемент альбома: самый большой размер фото и, если у элемента
@@ -72,15 +72,15 @@ func newMediaMessage(msg *tgbotapi.Message) *MediaMessage {
 // Подпись может прийти на любом элементе, а не только на первом. Если подписи есть
 // на нескольких элементах, побеждает последняя (вместе с её entities и ID),
 // а подписи остальных элементов не публикуются.
-func (mm *MediaMessage) addItem(msg *tgbotapi.Message) {
+func (a *album) addItem(msg *telego.Message) {
 	if len(msg.Photo) > 0 {
-		mm.fileid = append(mm.fileid, msg.Photo[len(msg.Photo)-1].FileID)
+		a.fileIDs = append(a.fileIDs, msg.Photo[len(msg.Photo)-1].FileID)
 	} else {
-		mm.skipped++
+		a.skipped++
 	}
 	if msg.Caption != "" {
-		mm.caption = msg.Caption
-		mm.entities = msg.CaptionEntities
-		mm.originalmessageid = msg.MessageID
+		a.caption = msg.Caption
+		a.entities = msg.CaptionEntities
+		a.replyToID = msg.MessageID
 	}
 }

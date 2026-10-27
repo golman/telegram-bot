@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 	ta "github.com/mymmrac/telego/telegoapi"
 
 	"github.com/golman/telegram-bot/internal/post"
@@ -60,15 +60,15 @@ func decodeCallback(s string) (callbackData, error) {
 }
 
 // toggleKeyboard возвращает клавиатуру из одной кнопки с действием d.action.
-func toggleKeyboard(d callbackData) *tgbotapi.InlineKeyboardMarkup {
-	text := DeprecateButton
+func toggleKeyboard(d callbackData) *telego.InlineKeyboardMarkup {
+	text := deprecateButton
 	if d.action == actionRestore {
-		text = RestoreButton
+		text = restoreButton
 	}
-	return &tgbotapi.InlineKeyboardMarkup{
-		InlineKeyboard: [][]tgbotapi.InlineKeyboardButton{
+	return &telego.InlineKeyboardMarkup{
+		InlineKeyboard: [][]telego.InlineKeyboardButton{
 			{
-				tgbotapi.InlineKeyboardButton{
+				telego.InlineKeyboardButton{
 					Text:         text,
 					CallbackData: encodeCallback(d),
 				},
@@ -85,10 +85,10 @@ var errForeignChat = errors.New("chatID из callback data не совпадае
 // и меняет кнопку в подтверждении на противоположное действие.
 // AnswerCallbackQuery вызывается ровно один раз, в defer; текст ответа
 // выставляют ветки. Ошибки API пишутся только в лог.
-func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
+func (b *Bot) handleCallbackQuery(query *telego.CallbackQuery) {
 	var answer string
 	defer func() {
-		err := vbbot.tgbot.AnswerCallbackQuery(context.Background(), &tgbotapi.AnswerCallbackQueryParams{
+		err := b.client.AnswerCallbackQuery(context.Background(), &telego.AnswerCallbackQueryParams{
 			CallbackQueryID: query.ID,
 			Text:            answer,
 		})
@@ -98,39 +98,39 @@ func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	}()
 
 	d, err := decodeCallback(query.Data)
-	if err == nil && d.chatID != vbbot.channelId {
+	if err == nil && d.chatID != b.channelID {
 		err = fmt.Errorf("callback data %q: %w", query.Data, errForeignChat)
 	}
 	if err != nil {
 		slog.Warn("некорректные callback data", "user_id", query.From.ID, "data", query.Data, "err", err)
-		answer = CallbackInvalidMessage
+		answer = callbackInvalidMessage
 		return
 	}
 
 	if query.Message == nil || !query.Message.IsAccessible() {
-		answer = OriginalMessageMissingMessage
+		answer = originalMessageMissingMessage
 		return
 	}
 	msg := query.Message.Message()
 
 	src, ok := post.FromMessage(msg.ReplyToMessage)
 	if !ok {
-		answer = OriginalMessageMissingMessage
+		answer = originalMessageMissingMessage
 		return
 	}
 
 	deprecated := d.action == actionDelete
 	text, ents := post.Build(src, deprecated)
 	if src.Media {
-		_, err = vbbot.tgbot.EditMessageCaption(context.Background(), &tgbotapi.EditMessageCaptionParams{
-			ChatID:          tgbotapi.ChatID{ID: d.chatID},
+		_, err = b.client.EditMessageCaption(context.Background(), &telego.EditMessageCaptionParams{
+			ChatID:          telego.ChatID{ID: d.chatID},
 			MessageID:       d.messageID,
 			Caption:         text,
 			CaptionEntities: ents,
 		})
 	} else {
-		_, err = vbbot.tgbot.EditMessageText(context.Background(), &tgbotapi.EditMessageTextParams{
-			ChatID:    tgbotapi.ChatID{ID: d.chatID},
+		_, err = b.client.EditMessageText(context.Background(), &telego.EditMessageTextParams{
+			ChatID:    telego.ChatID{ID: d.chatID},
 			MessageID: d.messageID,
 			Text:      text,
 			Entities:  ents,
@@ -140,23 +140,23 @@ func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	// повторно или из старого подтверждения), это успех.
 	if err != nil && !isNotModified(err) {
 		slog.Error("не удалось изменить пост в канале", "chat_id", d.chatID, "channel_msg_id", d.messageID, "err", err)
-		answer = ChannelEditFailedMessage
+		answer = channelEditFailedMessage
 		return
 	}
 
 	next := d
 	if deprecated {
-		answer = AdDeprecatedMessage
+		answer = adDeprecatedMessage
 		next.action = actionRestore
 	} else {
-		answer = AdRestoredMessage
+		answer = adRestoredMessage
 		next.action = actionDelete
 	}
 
 	// Пост в канале уже изменён, поэтому ошибка правки подтверждения
 	// только логируется, а пользователь получает ответ об успехе.
-	_, err = vbbot.tgbot.EditMessageText(context.Background(), &tgbotapi.EditMessageTextParams{
-		ChatID:      tgbotapi.ChatID{ID: msg.Chat.ID},
+	_, err = b.client.EditMessageText(context.Background(), &telego.EditMessageTextParams{
+		ChatID:      telego.ChatID{ID: msg.Chat.ID},
 		MessageID:   msg.MessageID,
 		Text:        answer,
 		ReplyMarkup: toggleKeyboard(next),
