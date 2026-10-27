@@ -65,8 +65,25 @@ func (b *Bot) Run(ctx context.Context, ch <-chan telego.Update) error {
 			}
 			b.dispatch(update)
 		case <-b.ticker.C:
+			b.drainBuffered(ch)
 			b.tick()
 		}
+	}
+}
+
+// drainBuffered обрабатывает обновления, которые уже лежали в буфере ch
+// к шагу тикера. Если цикл был занят дольше albumQuietPeriod (например, ждал
+// повтора 429), следующие фото альбома ждут в буфере, и без этого tick() мог бы
+// отправить альбом без них. Берётся ровно len(ch) на момент вызова, чтобы поток
+// новых обновлений не откладывал тик бесконечно. Закрытие канала обработает
+// основной цикл.
+func (b *Bot) drainBuffered(ch <-chan telego.Update) {
+	for range len(ch) {
+		update, ok := <-ch
+		if !ok {
+			return
+		}
+		b.dispatch(update)
 	}
 }
 

@@ -185,6 +185,44 @@ func TestRunTicksAlbums(t *testing.T) {
 	}
 }
 
+// TestRunTickAfterBusyLoop: цикл событий был занят дольше тишины альбома
+// (например, ждал повтора 429), и за это время следующее фото альбома
+// уже лежит в буфере. Шаг тикера сначала обрабатывает буфер, поэтому альбом
+// не уходит без этого фото. Когда готовы и тик, и обновление, select выбирает
+// случайно, поэтому сценарий повторяется: без дочитывания буфера тест падал бы
+// почти наверняка.
+func TestRunTickAfterBusyLoop(t *testing.T) {
+	testutil.CaptureLog(t)
+	for i := range 20 {
+		b, f := newTestBot(t, nil)
+		clock := useFakeClock(b)
+		first := albumItem(100, "p1", "Продам", nil)
+		a := newAlbum(first)
+		a.addItem(first)
+		a.promised = true
+		a.lastItemAt = clock.t.Add(-20 * time.Second)
+		b.albums = map[string]*album{"album": a}
+
+		ticks := make(chan time.Time, 1)
+		ticks <- clock.t
+		b.ticker = &time.Ticker{C: ticks}
+		ch := make(chan telego.Update, 1)
+		ch <- telego.Update{Message: albumItem(101, "p2", "", nil)}
+		close(ch)
+
+		if err := runBot(t, b, cancelledContext(), ch); err != nil {
+			t.Fatalf("прогон %d: Run вернул ошибку: %v", i, err)
+		}
+		groups := f.byMethod("sendMediaGroup")
+		if len(groups) != 1 {
+			t.Fatalf("прогон %d: получено sendMediaGroup %d раз, ожидался один", i, len(groups))
+		}
+		if n := len(jsonField[[]any](t, groups[0].body, "media")); n != 2 {
+			t.Fatalf("прогон %d: получен альбом из %d фото, ожидалось 2: фото из буфера не должно отставать от тика", i, n)
+		}
+	}
+}
+
 // TestRunDrainsBufferedUpdates: обновления, которые telego уже положил
 // в буфер канала, обрабатываются до выхода. Telegram считает их доставленными,
 // и без обработки они бы пропали. Альбом из буфера публикуется при остановке.
