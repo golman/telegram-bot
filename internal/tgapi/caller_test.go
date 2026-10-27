@@ -218,3 +218,21 @@ func TestNewCaller(t *testing.T) {
 		t.Errorf("apiTimeout %s должен быть хотя бы на 5s больше long polling %s", apiTimeout, poll)
 	}
 }
+
+// TestSleepContext: ожидание перед повтором заканчивается через d или сразу
+// при отмене ctx, тогда возвращается её ошибка.
+func TestSleepContext(t *testing.T) {
+	if err := sleepContext(context.Background(), time.Millisecond); err != nil {
+		t.Errorf("получена ошибка %v после ожидания, ожидалось nil", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	if err := sleepContext(ctx, time.Hour); !errors.Is(err, context.Canceled) {
+		t.Errorf("получена ошибка %v при отменённом ctx, ожидалась context.Canceled", err)
+	}
+	if d := time.Since(start); d > time.Second {
+		t.Errorf("получено ожидание %s при отменённом ctx, ожидался немедленный возврат", d)
+	}
+}

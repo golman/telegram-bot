@@ -153,6 +153,38 @@ func TestRunFlushesPendingAlbums(t *testing.T) {
 	}
 }
 
+// TestRunTicksAlbums: Run сам делает шаги тикера, и альбом, после последнего
+// фото которого прошла тишина, публикуется во время работы, а не только
+// при остановке. Остальные тесты альбомов вызывают tick() напрямую.
+func TestRunTicksAlbums(t *testing.T) {
+	testutil.CaptureLog(t)
+	b, f := newTestBot(t, nil)
+	// lastItemAt не задан: тишина после последнего фото давно прошла.
+	b.albums = map[string]*album{"album": pendingAlbum(albumCollecting)}
+	b.ticker = time.NewTicker(10 * time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	ch := make(chan telego.Update)
+	done := make(chan error, 1)
+	go func() { done <- b.Run(ctx, ch) }()
+
+	deadline := time.After(time.Second)
+	for len(f.byMethod("sendMediaGroup")) == 0 {
+		select {
+		case <-deadline:
+			t.Fatal("получено: альбом не опубликован за секунду работы Run, ожидалась публикация по тикеру")
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+	cancel()
+	close(ch)
+	if err := <-done; err != nil {
+		t.Fatalf("Run вернул ошибку: %v", err)
+	}
+	if n := len(f.byMethod("sendMediaGroup")); n != 1 {
+		t.Errorf("получено sendMediaGroup %d раз, ожидался один", n)
+	}
+}
+
 // TestRunDrainsBufferedUpdates: обновления, которые telego уже положил
 // в буфер канала, обрабатываются до выхода. Telegram считает их доставленными,
 // и без обработки они бы пропали. Альбом из буфера публикуется при остановке.

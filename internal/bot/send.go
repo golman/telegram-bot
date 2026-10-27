@@ -115,7 +115,10 @@ func (b *Bot) sendPhotoMessage(update telego.Update) {
 func (b *Bot) sendPlainMessage(update telego.Update) {
 	src, ok := post.FromMessage(update.Message)
 	if !ok {
-		b.sayNoCaption(update.Message.Chat.ID)
+		// handleUpdate не пропускает сообщения без текста и без автора,
+		// так что сюда попасть не должно; отвечать автору здесь нечего.
+		slog.Warn("сообщение без текста или автора, не опубликовано",
+			"chat_id", update.Message.Chat.ID, "message_id", update.Message.MessageID)
 		return
 	}
 	if b.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {

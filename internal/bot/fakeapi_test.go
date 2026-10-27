@@ -96,11 +96,11 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"ok":true,"result":true}`))
 	case "sendMediaGroup":
 		// Bot API отвечает на sendMediaGroup массивом сообщений, а не объектом.
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"ok":true,"result":[{"message_id":%d,"date":1,"chat":{"id":%d,"type":"channel"}}]}`,
-			testMediaGroupMessageID, testChannelID)))
+		_, _ = w.Write(fmt.Appendf(nil, `{"ok":true,"result":[{"message_id":%d,"date":1,"chat":{"id":%d,"type":"channel"}}]}`,
+			testMediaGroupMessageID, testChannelID))
 	case "sendPhoto":
-		_, _ = w.Write([]byte(fmt.Sprintf(`{"ok":true,"result":{"message_id":%d,"date":1,"chat":{"id":%d,"type":"channel"}}}`,
-			testPhotoMessageID, testChannelID)))
+		_, _ = w.Write(fmt.Appendf(nil, `{"ok":true,"result":{"message_id":%d,"date":1,"chat":{"id":%d,"type":"channel"}}}`,
+			testPhotoMessageID, testChannelID))
 	default:
 		_, _ = w.Write([]byte(`{"ok":true,"result":{"message_id":1,"date":1,"chat":{"id":1,"type":"private"}}}`))
 	}

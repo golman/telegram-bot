@@ -31,6 +31,26 @@ func TestPhotoWithoutCaption(t *testing.T) {
 	}
 }
 
+// TestPlainMessageWithoutSource: если текстовое сообщение дошло до
+// sendPlainMessage без текста или автора (handleUpdate такого не пропускает),
+// оно не публикуется, автору не уходит текст про фото, а в логе есть запись.
+func TestPlainMessageWithoutSource(t *testing.T) {
+	logs := testutil.CaptureLog(t)
+	b, f := newTestBot(t, nil)
+	m := authorMessage(100)
+	m.From = nil
+	m.Text = "Продам"
+
+	b.sendPlainMessage(telego.Update{Message: m})
+
+	if calls := f.allCalls(); len(calls) != 0 {
+		t.Errorf("получено запросов к API %d, ожидалось 0: %v", len(calls), calls)
+	}
+	if out := logs.String(); !strings.Contains(out, `msg="сообщение без текста или автора, не опубликовано"`) {
+		t.Errorf("получено без записи о пропущенном сообщении, ожидалась запись:\n%s", out)
+	}
+}
+
 // TestSinglePhotoViaSendPhoto: одиночное фото публикуется одним sendPhoto
 // (самый большой размер, подпись с припиской автора), а кнопка
 // подтверждения ведёт на пост из ответа sendPhoto.
