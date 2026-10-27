@@ -77,8 +77,10 @@ func DisplayName(u telego.User) string {
 	return strings.TrimSpace(u.FirstName + " " + u.LastName)
 }
 
-// FromMessage собирает Source из исходного сообщения автора.
-// Возвращает false, если сообщения нет, у него нет автора или нет текста/подписи.
+// FromMessage собирает Source из исходного сообщения автора: текст у текстового
+// сообщения, подпись — у любого медиа (фото, а в альбоме и видео или файла,
+// если подпись стоит на нём). Возвращает false, если сообщения нет, у него
+// нет автора или нет ни текста, ни подписи.
 func FromMessage(m *telego.Message) (Source, bool) {
 	if m == nil || m.From == nil {
 		return Source{}, false
@@ -87,13 +89,13 @@ func FromMessage(m *telego.Message) (Source, bool) {
 		AuthorID:   m.From.ID,
 		AuthorName: DisplayName(*m.From),
 	}
-	if m.Photo != nil {
+	if m.Text != "" {
+		src.Text = m.Text
+		src.Entities = m.Entities
+	} else {
 		src.Text = m.Caption
 		src.Entities = m.CaptionEntities
 		src.Media = true
-	} else {
-		src.Text = m.Text
-		src.Entities = m.Entities
 	}
 	if src.Text == "" {
 		return Source{}, false

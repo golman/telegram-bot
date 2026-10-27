@@ -101,6 +101,29 @@ func TestHandleCallbackQuery(t *testing.T) {
 			},
 		},
 		{
+			// В альбоме «фото + видео» подпись может стоять на видео: подтверждение
+			// отвечает на него, а пост в канале — альбом с подписью на первом фото.
+			name: "альбом, подпись на видео: delete", data: "delete_-1001234567890_43", msg: confirmMsg(albumVideo(12, "cap")),
+			wantAnswer: adDeprecatedMessage,
+			wantEdits:  []string{"editMessageCaption", "editMessageText"},
+			check: func(t *testing.T, f *fakeAPI) {
+				body := f.byMethod("editMessageCaption")[0].body
+				checkTarget(t, "пост", body, testChannelID, 43)
+				if got, want := jsonString(t, body, "caption"), post.DeprecatedPrefix+"cap"+post.AuthorSuffix+"Иван"; got != want {
+					t.Errorf("подпись поста = %q, ожидалось %q", got, want)
+				}
+			},
+		},
+		{
+			name: "альбом, подпись на документе: restore", data: "restore_-1001234567890_43",
+			msg: confirmMsg(&telego.Message{
+				MessageID: 13, Date: 1, Caption: "cap", Document: &telego.Document{FileID: "d"},
+				From: &telego.User{ID: testAuthorID, FirstName: "Иван"},
+			}),
+			wantAnswer: adRestoredMessage,
+			wantEdits:  []string{"editMessageCaption", "editMessageText"},
+		},
+		{
 			name: "текст: restore", data: "restore_-1001234567890_42", msg: confirmMsg(textReply()),
 			wantAnswer: adRestoredMessage,
 			wantEdits:  []string{"editMessageText", "editMessageText"},

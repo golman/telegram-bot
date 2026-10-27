@@ -167,6 +167,29 @@ func TestFromMessage(t *testing.T) {
 			msg:  &telego.Message{Photo: photo, From: author},
 		},
 		{
+			// Подпись альбома может стоять на видео или файле: пост в канале —
+			// альбом, поэтому это подпись медиа, а не текст.
+			name:         "видео с подписью",
+			msg:          &telego.Message{Video: &telego.Video{FileID: "v"}, Caption: "cap", CaptionEntities: capEnts, From: author},
+			wantOK:       true,
+			wantMedia:    true,
+			wantText:     "cap",
+			wantAuthor:   "A",
+			wantEntities: capEnts,
+		},
+		{
+			name:       "документ с подписью",
+			msg:        &telego.Message{Document: &telego.Document{FileID: "d"}, Caption: "cap", From: author},
+			wantOK:     true,
+			wantMedia:  true,
+			wantText:   "cap",
+			wantAuthor: "A",
+		},
+		{
+			name: "видео без подписи",
+			msg:  &telego.Message{Video: &telego.Video{FileID: "v"}, From: author},
+		},
+		{
 			name: "нет автора",
 			msg:  &telego.Message{Text: "abc"},
 		},
