@@ -79,4 +79,4 @@
 - [ ] **Непонятный отказ для фото без подписи.** На фото без подписи приходит «Сообщение не может быть пустым»; понятнее «Добавьте к фото подпись с текстом объявления».
 - [ ] **Разный тон обращения.** «Нажми на кнопку» рядом с «Вы не подписаны».
 - [ ] **Имена в стиле Go.** `vbbot`, `mediamsg`, `fileid`, `originalmessageid`, `channelId` → `b`, `mediaGroups`, `fileIDs`, `originalMessageID`, `channelID`; псевдоним `tgbotapi` → `telego`.
-- [ ] **Имя модуля.** `TelegramBot` → `github.com/<owner>/telegram-bot`.
+- [x] **Имя модуля.** `TelegramBot` → `github.com/<owner>/telegram-bot`.

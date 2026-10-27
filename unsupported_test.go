@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tgbotapi "github.com/mymmrac/telego"
+
+	"github.com/golman/telegram-bot/internal/post"
 )
 
 // TestUnsupportedMessage: всё, кроме текста и фото, отклоняется одним
@@ -123,7 +125,7 @@ func TestAlbumWithUnsupportedItems(t *testing.T) {
 					t.Errorf("опубликованы %v, ожидались %v", got, tt.wantMedia)
 				}
 				first := jsonIndex[map[string]any](t, media, 0)
-				if want := "Продам" + AuthorSuffix + "Иван"; jsonString(t, first, "caption") != want {
+				if want := "Продам" + post.AuthorSuffix + "Иван"; jsonString(t, first, "caption") != want {
 					t.Errorf("подпись %q, ожидалась %q", jsonString(t, first, "caption"), want)
 				}
 			}

@@ -10,4 +10,4 @@ logs/
 .claude/
 docs/
 *.md
-*_test.go
+**/*_test.go

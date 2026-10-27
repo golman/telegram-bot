@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tgbotapi "github.com/mymmrac/telego"
+
+	"github.com/golman/telegram-bot/internal/post"
 )
 
 // authUpdate — обычное текстовое сообщение из личного чата пользователя.
@@ -27,7 +29,7 @@ type wantMessage struct {
 func TestHandleUpdateAuth(t *testing.T) {
 	// Пост в канале и подтверждение автору — признаки успешной публикации.
 	published := []wantMessage{
-		{chat: testChannelID, textPrefix: "Продам велосипед" + AuthorSuffix},
+		{chat: testChannelID, textPrefix: "Продам велосипед" + post.AuthorSuffix},
 		{chat: testAuthorID, textPrefix: "Объявление опубликовано.", button: true},
 	}
 	tests := []struct {

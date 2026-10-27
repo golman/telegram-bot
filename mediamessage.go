@@ -4,6 +4,8 @@ import (
 	"time"
 
 	tgbotapi "github.com/mymmrac/telego"
+
+	"github.com/golman/telegram-bot/internal/post"
 )
 
 type MediaMessage struct {
@@ -58,7 +60,7 @@ func newMediaMessage(msg *tgbotapi.Message) *MediaMessage {
 		originalmessageid: msg.MessageID,
 	}
 	if msg.From != nil {
-		mm.fullname = displayName(*msg.From)
+		mm.fullname = post.DisplayName(*msg.From)
 		mm.userid = msg.From.ID
 	}
 	return mm

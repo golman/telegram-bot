@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	tgbotapi "github.com/mymmrac/telego"
+
+	"github.com/golman/telegram-bot/internal/post"
 )
 
 // TestEmptySendMediaGroupResponse: если Bot API ответил на sendMediaGroup
@@ -59,7 +61,7 @@ func TestEmptySendMediaGroupResponse(t *testing.T) {
 func TestPostTooLong(t *testing.T) {
 	author := &tgbotapi.User{ID: testAuthorID, FirstName: "Иван"}
 	limit := func(media bool) int {
-		return postTextLimit(postSource{authorID: author.ID, authorName: displayName(*author), media: media})
+		return post.TextLimit(post.Source{AuthorID: author.ID, AuthorName: post.DisplayName(*author), Media: media})
 	}
 	plain := func(text string) func(b *VBBot) {
 		return func(b *VBBot) {

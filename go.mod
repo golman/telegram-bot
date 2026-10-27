@@ -1,4 +1,4 @@
-module TelegramBot
+module github.com/golman/telegram-bot
 
 go 1.26.7
 

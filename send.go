@@ -7,6 +7,8 @@ import (
 
 	tgbotapi "github.com/mymmrac/telego"
 	"github.com/mymmrac/telego/telegoutil"
+
+	"github.com/golman/telegram-bot/internal/post"
 )
 
 // errEmptyMediaGroupResponse — Bot API ответил на sendMediaGroup без сообщений,
@@ -24,17 +26,17 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 		return
 	}
 
-	src := postSource{
-		text:       mm.caption,
-		entities:   mm.entities,
-		authorID:   mm.userid,
-		authorName: mm.fullname,
-		media:      true,
+	src := post.Source{
+		Text:       mm.caption,
+		Entities:   mm.entities,
+		AuthorID:   mm.userid,
+		AuthorName: mm.fullname,
+		Media:      true,
 	}
 	if vbbot.rejectTooLong(src, mm.userid, mm.originalmessageid) {
 		return
 	}
-	text, entities := buildPost(src, false)
+	text, entities := post.Build(src, false)
 	mgc := tgbotapi.SendMediaGroupParams{
 		ChatID: tgbotapi.ChatID{ID: vbbot.channelId},
 		Media:  make([]tgbotapi.InputMedia, 0),
@@ -71,10 +73,10 @@ func (vbbot *VBBot) sendMediaGroup(mm *MediaMessage) {
 }
 
 // sendPhotoMessage публикует одиночное фото с подписью. Пост собирается
-// той же postSourceFromMessage, что и при нажатии кнопки, поэтому
+// той же post.FromMessage, что и при нажатии кнопки, поэтому
 // публикация и пометка «Не актуально» берут текст одинаково.
 func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
-	src, ok := postSourceFromMessage(update.Message)
+	src, ok := post.FromMessage(update.Message)
 	if !ok {
 		vbbot.sayNoEmptyMessage(update.Message.Chat.ID)
 		return
@@ -86,7 +88,7 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 	if vbbot.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {
 		return
 	}
-	text, ents := buildPost(src, false)
+	text, ents := post.Build(src, false)
 	msg := tgbotapi.SendMediaGroupParams{
 		ChatID: tgbotapi.ChatID{ID: vbbot.channelId},
 		Media: []tgbotapi.InputMedia{
@@ -114,9 +116,9 @@ func (vbbot *VBBot) sendPhotoMessage(update tgbotapi.Update) {
 }
 
 // sendPlainMessage публикует текстовое объявление; пост собирается
-// postSourceFromMessage, как и в sendPhotoMessage.
+// post.FromMessage, как и в sendPhotoMessage.
 func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
-	src, ok := postSourceFromMessage(update.Message)
+	src, ok := post.FromMessage(update.Message)
 	if !ok {
 		vbbot.sayNoEmptyMessage(update.Message.Chat.ID)
 		return
@@ -124,7 +126,7 @@ func (vbbot *VBBot) sendPlainMessage(update tgbotapi.Update) {
 	if vbbot.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {
 		return
 	}
-	text, ents := buildPost(src, false)
+	text, ents := post.Build(src, false)
 	emsg := &tgbotapi.SendMessageParams{
 		ChatID:   tgbotapi.ChatID{ID: vbbot.channelId},
 		Text:     text,
@@ -146,12 +148,12 @@ func (vbbot *VBBot) sayNoEmptyMessage(chatId int64) {
 // rejectTooLong проверяет, уместится ли пост из src в лимит Telegram.
 // Если нет, отвечает автору в чате chatID на его сообщение replyTo
 // и возвращает true. Такой пост не отправляется.
-func (vbbot *VBBot) rejectTooLong(src postSource, chatID int64, replyTo int) bool {
-	n, limit := telegoutil.UTF16TextLen(src.text), postTextLimit(src)
+func (vbbot *VBBot) rejectTooLong(src post.Source, chatID int64, replyTo int) bool {
+	n, limit := telegoutil.UTF16TextLen(src.Text), post.TextLimit(src)
 	if n <= limit {
 		return false
 	}
-	slog.Info("объявление слишком длинное", "user_id", src.authorID, "length", n, "limit", limit)
+	slog.Info("объявление слишком длинное", "user_id", src.AuthorID, "length", n, "limit", limit)
 	msg := tgbotapi.SendMessageParams{
 		ChatID: tgbotapi.ChatID{ID: chatID},
 		Text:   postTooLongText(n - limit),

@@ -61,14 +61,6 @@ const (
 	ChannelEditFailedMessage = "Не удалось изменить объявление в канале"
 )
 
-// Вид поста в канале (собирает buildPost).
-const (
-	// DeprecatedPrefix ставится перед зачёркнутым текстом неактуального объявления.
-	DeprecatedPrefix = "Не актуально.\n\n"
-	// AuthorSuffix отделяет текст объявления от упоминания автора.
-	AuthorSuffix = "\n\n by: "
-)
-
 // postTooLongText возвращает PostTooLongMessage для превышения на over символов,
 // со словом «символ» в форме, согласованной с числом.
 func postTooLongText(over int) string {

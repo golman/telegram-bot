@@ -7,6 +7,8 @@ import (
 	"time"
 
 	tgbotapi "github.com/mymmrac/telego"
+
+	"github.com/golman/telegram-bot/internal/post"
 )
 
 // pressButton нажимает кнопку с callback data data под подтверждением,
@@ -50,7 +52,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 		{
 			name: "подпись на втором фото", cap2: "Продам 🚲", ent2: bold,
 			wantReplyTo: 1,
-			wantCaption: "Продам 🚲" + AuthorSuffix + "Иван",
+			wantCaption: "Продам 🚲" + post.AuthorSuffix + "Иван",
 			wantEntities: []tgbotapi.MessageEntity{
 				{Type: "text_mention", Offset: 16, Length: 4, User: &tgbotapi.User{ID: testAuthorID}},
 				{Type: "bold", Offset: 0, Length: 6},
@@ -59,7 +61,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 		{
 			name: "подпись на первом фото", cap1: "Продам 🚲", ent1: bold,
 			wantReplyTo: 0,
-			wantCaption: "Продам 🚲" + AuthorSuffix + "Иван",
+			wantCaption: "Продам 🚲" + post.AuthorSuffix + "Иван",
 			wantEntities: []tgbotapi.MessageEntity{
 				{Type: "text_mention", Offset: 16, Length: 4, User: &tgbotapi.User{ID: testAuthorID}},
 				{Type: "bold", Offset: 0, Length: 6},
@@ -69,7 +71,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 			// Поведение из комментария к addItem: побеждает последняя подпись.
 			name: "подписи на обоих фото", cap1: "Первая", ent1: bold, cap2: "Вторая", ent2: italic,
 			wantReplyTo: 1,
-			wantCaption: "Вторая" + AuthorSuffix + "Иван",
+			wantCaption: "Вторая" + post.AuthorSuffix + "Иван",
 			wantEntities: []tgbotapi.MessageEntity{
 				{Type: "text_mention", Offset: 13, Length: 4, User: &tgbotapi.User{ID: testAuthorID}},
 				{Type: "italic", Offset: 0, Length: 3},
@@ -198,7 +200,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 			}
 			del := captions[0].body
 			checkTarget(t, "пост", del, testChannelID, testMediaGroupMessageID)
-			if got, want := jsonString(t, del, "caption"), DeprecatedPrefix+tt.wantCaption; got != want {
+			if got, want := jsonString(t, del, "caption"), post.DeprecatedPrefix+tt.wantCaption; got != want {
 				t.Errorf("подпись после delete = %q, ожидалось %q", got, want)
 			}
 			// «Не актуально.\n\n» — 15 UTF-16 units.

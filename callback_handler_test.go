@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tgbotapi "github.com/mymmrac/telego"
+
+	"github.com/golman/telegram-bot/internal/post"
 )
 
 // checkTarget проверяет, что запрос правит сообщение messageID в чате chatID.
@@ -64,10 +66,10 @@ func TestHandleCallbackQuery(t *testing.T) {
 			wantEdits:  []string{"editMessageText", "editMessageText"},
 			check: func(t *testing.T, f *fakeAPI) {
 				edits := f.byMethod("editMessageText")
-				post := edits[0].body
-				checkTarget(t, "пост", post, testChannelID, 42)
-				if got := jsonString(t, post, "text"); !strings.HasPrefix(got, DeprecatedPrefix) {
-					t.Errorf("текст поста = %q, ожидался префикс %q", got, DeprecatedPrefix)
+				body := edits[0].body
+				checkTarget(t, "пост", body, testChannelID, 42)
+				if got := jsonString(t, body, "text"); !strings.HasPrefix(got, post.DeprecatedPrefix) {
+					t.Errorf("текст поста = %q, ожидался префикс %q", got, post.DeprecatedPrefix)
 				}
 				checkConfirm(t, edits[1].body, AdDeprecatedMessage, RestoreButton, "restore_-1001234567890_42")
 			},
@@ -77,9 +79,9 @@ func TestHandleCallbackQuery(t *testing.T) {
 			wantAnswer: AdRestoredMessage,
 			wantEdits:  []string{"editMessageCaption", "editMessageText"},
 			check: func(t *testing.T, f *fakeAPI) {
-				post := f.byMethod("editMessageCaption")[0].body
-				checkTarget(t, "пост", post, testChannelID, 43)
-				if got, want := jsonString(t, post, "caption"), "cap"+AuthorSuffix+"Иван"; got != want {
+				body := f.byMethod("editMessageCaption")[0].body
+				checkTarget(t, "пост", body, testChannelID, 43)
+				if got, want := jsonString(t, body, "caption"), "cap"+post.AuthorSuffix+"Иван"; got != want {
 					t.Errorf("подпись поста = %q, ожидалось %q", got, want)
 				}
 				checkConfirm(t, f.byMethod("editMessageText")[0].body, AdRestoredMessage, DeprecateButton, "delete_-1001234567890_43")
@@ -90,10 +92,10 @@ func TestHandleCallbackQuery(t *testing.T) {
 			wantAnswer: AdDeprecatedMessage,
 			wantEdits:  []string{"editMessageCaption", "editMessageText"},
 			check: func(t *testing.T, f *fakeAPI) {
-				post := f.byMethod("editMessageCaption")[0].body
-				checkTarget(t, "пост", post, testChannelID, 43)
-				if got := jsonString(t, post, "caption"); !strings.HasPrefix(got, DeprecatedPrefix) {
-					t.Errorf("подпись поста = %q, ожидался префикс %q", got, DeprecatedPrefix)
+				body := f.byMethod("editMessageCaption")[0].body
+				checkTarget(t, "пост", body, testChannelID, 43)
+				if got := jsonString(t, body, "caption"); !strings.HasPrefix(got, post.DeprecatedPrefix) {
+					t.Errorf("подпись поста = %q, ожидался префикс %q", got, post.DeprecatedPrefix)
 				}
 				checkConfirm(t, f.byMethod("editMessageText")[0].body, AdDeprecatedMessage, RestoreButton, "restore_-1001234567890_43")
 			},
@@ -104,10 +106,10 @@ func TestHandleCallbackQuery(t *testing.T) {
 			wantEdits:  []string{"editMessageText", "editMessageText"},
 			check: func(t *testing.T, f *fakeAPI) {
 				edits := f.byMethod("editMessageText")
-				post := edits[0].body
-				checkTarget(t, "пост", post, testChannelID, 42)
-				if got := jsonString(t, post, "text"); strings.HasPrefix(got, DeprecatedPrefix) {
-					t.Errorf("текст восстановленного поста = %q, префикса %q быть не должно", got, DeprecatedPrefix)
+				body := edits[0].body
+				checkTarget(t, "пост", body, testChannelID, 42)
+				if got := jsonString(t, body, "text"); strings.HasPrefix(got, post.DeprecatedPrefix) {
+					t.Errorf("текст восстановленного поста = %q, префикса %q быть не должно", got, post.DeprecatedPrefix)
 				}
 				checkConfirm(t, edits[1].body, AdRestoredMessage, DeprecateButton, "delete_-1001234567890_42")
 			},

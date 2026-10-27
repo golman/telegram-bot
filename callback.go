@@ -11,6 +11,8 @@ import (
 
 	tgbotapi "github.com/mymmrac/telego"
 	ta "github.com/mymmrac/telego/telegoapi"
+
+	"github.com/golman/telegram-bot/internal/post"
 )
 
 // callbackAction — действие inline-кнопки под подтверждением публикации.
@@ -111,15 +113,15 @@ func (vbbot *VBBot) handleCallbackQuery(query *tgbotapi.CallbackQuery) {
 	}
 	msg := query.Message.Message()
 
-	src, ok := postSourceFromMessage(msg.ReplyToMessage)
+	src, ok := post.FromMessage(msg.ReplyToMessage)
 	if !ok {
 		answer = OriginalMessageMissingMessage
 		return
 	}
 
 	deprecated := d.action == actionDelete
-	text, ents := buildPost(src, deprecated)
-	if src.media {
+	text, ents := post.Build(src, deprecated)
+	if src.Media {
 		_, err = vbbot.tgbot.EditMessageCaption(context.Background(), &tgbotapi.EditMessageCaptionParams{
 			ChatID:          tgbotapi.ChatID{ID: d.chatID},
 			MessageID:       d.messageID,
