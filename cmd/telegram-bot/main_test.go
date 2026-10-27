@@ -2,11 +2,21 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/testutil"
 )
@@ -140,4 +150,116 @@ func assertInOrder(t *testing.T, name, out string, want ...*regexp.Regexp) {
 // testEnv — подставной getenv из vars.
 func testEnv(vars map[string]string) func(string) string {
 	return func(key string) string { return vars[key] }
+}
+
+// TestRunServesUpdates: run с настоящими telego и tgapi.NewCaller поверх
+// фейкового Bot API. Первый getUpdates получает 429 и повторяется после
+// retry_after (без NewCaller telego ждал бы 8 секунд), объявление из второго
+// ответа публикуется в канал, а после отмены ctx run возвращает 0.
+func TestRunServesUpdates(t *testing.T) {
+	testutil.CaptureLog(t)
+	api := newRunAPI()
+	srv := httptest.NewServer(api)
+	t.Cleanup(srv.Close)
+	env := testEnv(map[string]string{
+		"BOT_TOKEN":        testToken,
+		"CHANNEL_ID":       "-100",
+		"BOT_AUTH_ENABLED": "false",
+		"LOG_FILE_PATH":    filepath.Join(t.TempDir(), "bot.log"),
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var stdout syncBuffer
+	done := make(chan int, 1)
+	go func() { done <- runWith(ctx, env, &stdout, telego.WithAPIServer(srv.URL)) }()
+
+	select {
+	case <-api.published:
+	case code := <-done:
+		t.Fatalf("run вернул %d до публикации:\n%s", code, stdout.String())
+	case <-time.After(5 * time.Second):
+		t.Fatalf("получено: объявление не опубликовано за 5 с, ожидалась публикация после повтора 429:\n%s", stdout.String())
+	}
+	cancel()
+	select {
+	case code := <-done:
+		if code != 0 {
+			t.Errorf("получен код %d, ожидался 0", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("получено: run не вернулся за 5 с после отмены, ожидалась остановка")
+	}
+
+	out := stdout.String()
+	for _, want := range []string{`msg="Telegram ограничил частоту запросов, повтор" method=getUpdates`, `msg="бот остановлен"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("получено без записи %q, ожидалась запись:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "SECRET") {
+		t.Errorf("получен токен в логе, ожидалось его отсутствие:\n%s", out)
+	}
+}
+
+// runAPI — фейковый Bot API для TestRunServesUpdates: первый getUpdates
+// отвечает 429, второй — одним текстовым объявлением, дальше — пусто.
+// published закрывается, когда объявление ушло в канал.
+type runAPI struct {
+	mu        sync.Mutex
+	polls     int
+	published chan struct{}
+	once      sync.Once
+}
+
+func newRunAPI() *runAPI { return &runAPI{published: make(chan struct{})} }
+
+func (a *runAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	switch path.Base(r.URL.Path) {
+	case "getUpdates":
+		a.mu.Lock()
+		a.polls++
+		n := a.polls
+		a.mu.Unlock()
+		switch n {
+		case 1:
+			_, _ = io.WriteString(w, `{"ok":false,"error_code":429,"description":"Too Many Requests: retry after 1","parameters":{"retry_after":1}}`)
+		case 2:
+			_, _ = io.WriteString(w, `{"ok":true,"result":[{"update_id":1,"message":{"message_id":10,"date":1,`+
+				`"chat":{"id":42,"type":"private"},"from":{"id":42,"is_bot":false,"first_name":"Иван"},"text":"Продам велосипед"}}]}`)
+		default:
+			// Long polling без новых обновлений; пауза, чтобы цикл не крутился вхолостую.
+			time.Sleep(20 * time.Millisecond)
+			_, _ = io.WriteString(w, `{"ok":true,"result":[]}`)
+		}
+	case "sendMessage":
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["chat_id"] == float64(-100) {
+			a.once.Do(func() { close(a.published) })
+		}
+		_, _ = io.WriteString(w, `{"ok":true,"result":{"message_id":7,"date":1,"chat":{"id":-100,"type":"channel"}}}`)
+	default:
+		_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
+	}
+}
+
+// syncBuffer — bytes.Buffer, в который можно писать из горутины run
+// и читать из теста.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }

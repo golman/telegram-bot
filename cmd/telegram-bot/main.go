@@ -22,6 +22,13 @@ import (
 // по сигналу, 1 при ошибке запуска или работы. Конфиг читается через getenv,
 // логи пишутся в stdout и в файл.
 func run(getenv func(string) string, stdout io.Writer) int {
+	return runWith(context.Background(), getenv, stdout)
+}
+
+// runWith — run, который останавливается и при отмене parent, а клиенту
+// telego передаёт ещё и extra. Тесты задают через них фейковый Bot API
+// (telego.WithAPIServer) и остановку без сигнала.
+func runWith(parent context.Context, getenv func(string) string, stdout io.Writer, extra ...telego.BotOption) int {
 	logging.Bootstrap(stdout)
 	cfg, warnings, loadErr := config.Load(getenv)
 	setupErr := logging.Setup(cfg.Log, stdout)
@@ -42,6 +49,7 @@ func run(getenv func(string) string, stdout io.Writer) int {
 	}
 
 	opts := append(logging.BotOptions(cfg.Token, cfg.Log.Debug), telego.WithAPICaller(tgapi.NewCaller()))
+	opts = append(opts, extra...)
 	client, err := telego.NewBot(cfg.Token, opts...)
 	if err != nil {
 		slog.Error("не удалось создать клиент Bot API", "err", err)
@@ -50,7 +58,7 @@ func run(getenv func(string) string, stdout io.Writer) int {
 
 	// SIGINT/SIGTERM отменяют ctx: telego прекращает long polling и закрывает
 	// канал обновлений, после чего Run дообрабатывает буфер и выходит.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(parent, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {
 		<-ctx.Done()
