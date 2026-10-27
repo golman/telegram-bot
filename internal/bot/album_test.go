@@ -55,7 +55,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 			wantReplyTo: 1,
 			wantCaption: "Продам 🚲" + post.AuthorSuffix + "Иван",
 			wantEntities: []telego.MessageEntity{
-				{Type: "text_mention", Offset: 16, Length: 4, User: &telego.User{ID: testAuthorID}},
+				{Type: "text_mention", Offset: 15, Length: 4, User: &telego.User{ID: testAuthorID}},
 				{Type: "bold", Offset: 0, Length: 6},
 			},
 		},
@@ -64,7 +64,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 			wantReplyTo: 0,
 			wantCaption: "Продам 🚲" + post.AuthorSuffix + "Иван",
 			wantEntities: []telego.MessageEntity{
-				{Type: "text_mention", Offset: 16, Length: 4, User: &telego.User{ID: testAuthorID}},
+				{Type: "text_mention", Offset: 15, Length: 4, User: &telego.User{ID: testAuthorID}},
 				{Type: "bold", Offset: 0, Length: 6},
 			},
 		},
@@ -74,7 +74,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 			wantReplyTo: 1,
 			wantCaption: "Вторая" + post.AuthorSuffix + "Иван",
 			wantEntities: []telego.MessageEntity{
-				{Type: "text_mention", Offset: 13, Length: 4, User: &telego.User{ID: testAuthorID}},
+				{Type: "text_mention", Offset: 12, Length: 4, User: &telego.User{ID: testAuthorID}},
 				{Type: "italic", Offset: 0, Length: 3},
 			},
 		},
@@ -131,7 +131,7 @@ func TestAlbumEndToEnd(t *testing.T) {
 				if len(sent) != 1 {
 					t.Fatalf("sendMessage вызван %d раз, ожидался один отказ", len(sent))
 				}
-				if got, want := jsonString(t, sent[0].body, "text"), emptyMessage; got != want {
+				if got, want := jsonString(t, sent[0].body, "text"), noCaptionMessage; got != want {
 					t.Errorf("сообщение автору = %q, ожидалось %q", got, want)
 				}
 				return
@@ -422,7 +422,7 @@ func TestAlbumDelayPromise(t *testing.T) {
 		t.Errorf("до подписи автору ушли %q, ожидалось ничего", got)
 	}
 	clock.wait(b, albumQuietPeriod)
-	if got, want := authorTexts(t, f), []string{emptyMessage}; !reflect.DeepEqual(got, want) {
+	if got, want := authorTexts(t, f), []string{noCaptionMessage}; !reflect.DeepEqual(got, want) {
 		t.Errorf("автору ушли %q, ожидалось %q", got, want)
 	}
 }

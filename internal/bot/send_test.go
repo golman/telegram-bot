@@ -12,6 +12,25 @@ import (
 	"github.com/golman/telegram-bot/internal/testutil"
 )
 
+// TestPhotoWithoutCaption: одиночное фото без подписи не публикуется,
+// автор получает объяснение, что нужна подпись.
+func TestPhotoWithoutCaption(t *testing.T) {
+	testutil.CaptureLog(t)
+	b, f := newTestBot(t, nil)
+	b.albums = map[string]*album{}
+	m := authorMessage(100)
+	m.Photo = []telego.PhotoSize{{FileID: "p"}}
+
+	b.handleUpdate(telego.Update{Message: m})
+
+	if got, want := authorTexts(t, f), []string{noCaptionMessage}; !reflect.DeepEqual(got, want) {
+		t.Errorf("автору ушли %q, ожидалось %q", got, want)
+	}
+	if n := channelCalls(t, f, "sendMessage") + channelCalls(t, f, "sendMediaGroup") + channelCalls(t, f, "sendPhoto"); n != 0 {
+		t.Errorf("в канал ушло %d запросов, ожидалось 0", n)
+	}
+}
+
 // TestEmptySendMediaGroupResponse: если Bot API ответил на sendMediaGroup
 // пустым массивом, бот не паникует, а логирует ошибку, сообщает автору
 // о неудаче и не отправляет подтверждение с кнопкой.

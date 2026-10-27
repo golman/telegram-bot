@@ -44,35 +44,35 @@ func TestBuild(t *testing.T) {
 	}{
 		{
 			name:     "текстовый пост сохраняет разметку автора",
-			wantText: "Продам 🚲 велосипед\n\n by: Иван Петров",
+			wantText: "Продам 🚲 велосипед\n\nby: Иван Петров",
 			wantEntities: []telego.MessageEntity{
-				mention(26), ent(bold, 10, 9),
+				mention(25), ent(bold, 10, 9),
 			},
 		},
 		{
 			name:     "текстовый пост без разметки не становится жирным",
 			noMarkup: true,
-			wantText: "Продам 🚲 велосипед\n\n by: Иван Петров",
+			wantText: "Продам 🚲 велосипед\n\nby: Иван Петров",
 			wantEntities: []telego.MessageEntity{
-				mention(26),
+				mention(25),
 			},
 		},
 		{
 			name:     "подпись к фото сохраняет разметку автора",
 			media:    true,
-			wantText: "Продам 🚲 велосипед\n\n by: Иван Петров",
+			wantText: "Продам 🚲 велосипед\n\nby: Иван Петров",
 			wantEntities: []telego.MessageEntity{
-				mention(26), ent(bold, 10, 9),
+				mention(25), ent(bold, 10, 9),
 			},
 		},
 		{
 			name:       "неактуальный текстовый пост",
 			deprecated: true,
-			wantText:   "Не актуально.\n\nПродам 🚲 велосипед\n\n by: Иван Петров",
+			wantText:   "Не актуально.\n\nПродам 🚲 велосипед\n\nby: Иван Петров",
 			wantEntities: []telego.MessageEntity{
 				ent(strike, 15, 19),
-				ent(strike, 34, 7),
-				mention(41), ent(strike, 41, 11),
+				ent(strike, 34, 6),
+				mention(40), ent(strike, 40, 11),
 				ent(bold, 25, 9),
 			},
 		},
@@ -80,11 +80,11 @@ func TestBuild(t *testing.T) {
 			name:       "неактуальная подпись к фото",
 			media:      true,
 			deprecated: true,
-			wantText:   "Не актуально.\n\nПродам 🚲 велосипед\n\n by: Иван Петров",
+			wantText:   "Не актуально.\n\nПродам 🚲 велосипед\n\nby: Иван Петров",
 			wantEntities: []telego.MessageEntity{
 				ent(strike, 15, 19),
-				ent(strike, 34, 7),
-				mention(41), ent(strike, 41, 11),
+				ent(strike, 34, 6),
+				mention(40), ent(strike, 40, 11),
 				ent(bold, 25, 9),
 			},
 		},

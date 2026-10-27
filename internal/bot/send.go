@@ -22,7 +22,7 @@ func (b *Bot) sendMediaGroup(a *album) {
 		return
 	}
 	if a.caption == "" {
-		b.sayNoEmptyMessage(a.authorID)
+		b.sayNoCaption(a.authorID)
 		return
 	}
 
@@ -78,7 +78,7 @@ func (b *Bot) sendMediaGroup(a *album) {
 func (b *Bot) sendPhotoMessage(update telego.Update) {
 	src, ok := post.FromMessage(update.Message)
 	if !ok {
-		b.sayNoEmptyMessage(update.Message.Chat.ID)
+		b.sayNoCaption(update.Message.Chat.ID)
 		return
 	}
 
@@ -120,7 +120,7 @@ func (b *Bot) sendPhotoMessage(update telego.Update) {
 func (b *Bot) sendPlainMessage(update telego.Update) {
 	src, ok := post.FromMessage(update.Message)
 	if !ok {
-		b.sayNoEmptyMessage(update.Message.Chat.ID)
+		b.sayNoCaption(update.Message.Chat.ID)
 		return
 	}
 	if b.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {
@@ -140,9 +140,9 @@ func (b *Bot) sendPlainMessage(update telego.Update) {
 	}
 }
 
-// sayNoEmptyMessage отвечает автору, что у объявления нет текста или подписи.
-func (b *Bot) sayNoEmptyMessage(chatID int64) {
-	b.sendTextMessage(emptyMessage, chatID)
+// sayNoCaption отвечает автору, что у фото или альбома нет подписи.
+func (b *Bot) sayNoCaption(chatID int64) {
+	b.sendTextMessage(noCaptionMessage, chatID)
 }
 
 // rejectTooLong проверяет, уместится ли пост из src в лимит Telegram.
