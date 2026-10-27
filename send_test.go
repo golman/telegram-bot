@@ -9,6 +9,7 @@ import (
 	tgbotapi "github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/post"
+	"github.com/golman/telegram-bot/internal/testutil"
 )
 
 // TestEmptySendMediaGroupResponse: если Bot API ответил на sendMediaGroup
@@ -32,7 +33,7 @@ func TestEmptySendMediaGroupResponse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logs := captureLog(t)
+			logs := testutil.CaptureLog(t)
 			b, f := newTestBot(t, nil)
 			f.respond("sendMediaGroup", "[]")
 
@@ -101,7 +102,7 @@ func TestPostTooLong(t *testing.T) {
 	for _, tt := range tests {
 		n := limit(tt.media)
 		t.Run(tt.name+": на лимите", func(t *testing.T) {
-			captureLog(t)
+			testutil.CaptureLog(t)
 			b, f := newTestBot(t, nil)
 			tt.send(strings.Repeat("я", n))(b)
 			if got := channelCalls(t, f, tt.publish); got != 1 {
@@ -109,7 +110,7 @@ func TestPostTooLong(t *testing.T) {
 			}
 		})
 		t.Run(tt.name+": длиннее лимита", func(t *testing.T) {
-			captureLog(t)
+			testutil.CaptureLog(t)
 			b, f := newTestBot(t, nil)
 			// n-1 рун «я» и 🚲 (2 UTF-16 units): в рунах ровно лимит, в UTF-16 на один больше.
 			tt.send(strings.Repeat("я", n-1) + "🚲")(b)
@@ -208,7 +209,7 @@ func TestPublishErrorHidesAPIText(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logs := captureLog(t)
+			logs := testutil.CaptureLog(t)
 			b, f := newTestBot(t, map[string]string{tt.method: apiDesc})
 
 			tt.send(b)

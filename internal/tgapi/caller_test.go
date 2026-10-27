@@ -1,4 +1,4 @@
-package main
+package tgapi
 
 import (
 	"bytes"
@@ -11,8 +11,10 @@ import (
 	"testing"
 	"time"
 
-	tgbotapi "github.com/mymmrac/telego"
+	"github.com/mymmrac/telego"
 	ta "github.com/mymmrac/telego/telegoapi"
+
+	"github.com/golman/telegram-bot/internal/testutil"
 )
 
 // stubCaller отвечает заранее заданными ответами по порядку и считает вызовы.
@@ -102,7 +104,7 @@ func TestRateLimitCaller(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logs := captureLog(t)
+			logs := testutil.CaptureLog(t)
 			next := &stubCaller{responses: tt.responses}
 			c := newRateLimitCaller(next)
 			var slept []time.Duration
@@ -175,16 +177,16 @@ func TestTimeoutCallerAbortsHangingRequest(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release }))
 	t.Cleanup(srv.Close)
 	t.Cleanup(func() { close(release) })
-	bot, err := tgbotapi.NewBot("123456:"+strings.Repeat("A", 35),
-		tgbotapi.WithAPIServer(srv.URL), tgbotapi.WithDiscardLogger(),
-		tgbotapi.WithAPICaller(newTimeoutCaller(ta.DefaultFastHTTPCaller, 100*time.Millisecond)))
+	bot, err := telego.NewBot("123456:"+strings.Repeat("A", 35),
+		telego.WithAPIServer(srv.URL), telego.WithDiscardLogger(),
+		telego.WithAPICaller(newTimeoutCaller(ta.DefaultFastHTTPCaller, 100*time.Millisecond)))
 	if err != nil {
 		t.Fatalf("не удалось создать бота: %v", err)
 	}
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := bot.SendMessage(context.Background(), &tgbotapi.SendMessageParams{ChatID: tgbotapi.ChatID{ID: 1}, Text: "x"})
+		_, err := bot.SendMessage(context.Background(), &telego.SendMessageParams{ChatID: telego.ChatID{ID: 1}, Text: "x"})
 		done <- err
 	}()
 	select {
@@ -197,22 +199,22 @@ func TestTimeoutCallerAbortsHangingRequest(t *testing.T) {
 	}
 }
 
-// TestNewAPICaller: в боте повторы при 429 обёрнуты вокруг таймаута,
+// TestNewCaller: в боте повторы при 429 обёрнуты вокруг таймаута,
 // чтобы каждая попытка получала свой дедлайн, а таймаут был больше
 // long polling, иначе getUpdates обрывался бы раньше ответа Telegram.
-func TestNewAPICaller(t *testing.T) {
-	rl, ok := newAPICaller().(*rateLimitCaller)
+func TestNewCaller(t *testing.T) {
+	rl, ok := NewCaller().(*rateLimitCaller)
 	if !ok {
-		t.Fatalf("внешний caller %T, ожидался *rateLimitCaller", newAPICaller())
+		t.Fatalf("внешний caller %T, ожидался *rateLimitCaller", NewCaller())
 	}
 	tc, ok := rl.next.(*timeoutCaller)
 	if !ok {
 		t.Fatalf("под rateLimitCaller лежит %T, ожидался *timeoutCaller", rl.next)
 	}
-	if tc.timeout != apiTimeout {
-		t.Errorf("таймаут %s, ожидался apiTimeout %s", tc.timeout, apiTimeout)
+	if tc.timeout != APITimeout {
+		t.Errorf("таймаут %s, ожидался APITimeout %s", tc.timeout, APITimeout)
 	}
-	if poll := time.Duration(longPollTimeoutSeconds) * time.Second; apiTimeout < poll+5*time.Second {
-		t.Errorf("apiTimeout %s должен быть хотя бы на 5s больше long polling %s", apiTimeout, poll)
+	if poll := time.Duration(LongPollTimeoutSeconds) * time.Second; APITimeout < poll+5*time.Second {
+		t.Errorf("APITimeout %s должен быть хотя бы на 5s больше long polling %s", APITimeout, poll)
 	}
 }

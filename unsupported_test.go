@@ -7,6 +7,7 @@ import (
 	tgbotapi "github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/post"
+	"github.com/golman/telegram-bot/internal/testutil"
 )
 
 // TestUnsupportedMessage: всё, кроме текста и фото, отклоняется одним
@@ -25,7 +26,7 @@ func TestUnsupportedMessage(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			captureLog(t)
+			testutil.CaptureLog(t)
 			b, f := newTestBot(t, nil)
 			b.mediamsg = map[string]*MediaMessage{}
 			m := authorMessage(100)
@@ -55,7 +56,7 @@ func TestSupportedMessagesStillPublished(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			captureLog(t)
+			testutil.CaptureLog(t)
 			b, f := newTestBot(t, nil)
 			b.mediamsg = map[string]*MediaMessage{}
 			m := authorMessage(100)
@@ -98,7 +99,7 @@ func TestAlbumWithUnsupportedItems(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			captureLog(t)
+			testutil.CaptureLog(t)
 			b, f := newTestBot(t, nil)
 			b.mediamsg = map[string]*MediaMessage{}
 			clock := useFakeClock(b)
@@ -154,7 +155,7 @@ func TestHandleUpdateOnlyPrivateChats(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			captureLog(t)
+			testutil.CaptureLog(t)
 			b, f := newTestBot(t, nil)
 			b.mediamsg = map[string]*MediaMessage{}
 			// Проверка подписки включена: без автора она разыменовала бы nil.

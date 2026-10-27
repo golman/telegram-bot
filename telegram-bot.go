@@ -13,6 +13,8 @@ import (
 	"time"
 
 	tgbotapi "github.com/mymmrac/telego"
+
+	"github.com/golman/telegram-bot/internal/tgapi"
 )
 
 type VBBot struct {
@@ -49,7 +51,7 @@ func main() {
 		fatal("не задан или некорректен CHANNEL_ID")
 	}
 
-	opts := append(botOptions(botToken, debug), tgbotapi.WithAPICaller(newAPICaller()))
+	opts := append(botOptions(botToken, debug), tgbotapi.WithAPICaller(tgapi.NewCaller()))
 	bot, err := tgbotapi.NewBot(botToken, opts...)
 	if err != nil {
 		fatal("не удалось создать клиент Bot API", "err", err)
@@ -65,7 +67,7 @@ func main() {
 		stop()
 	}()
 
-	updates, err := bot.UpdatesViaLongPolling(ctx, &tgbotapi.GetUpdatesParams{Timeout: longPollTimeoutSeconds})
+	updates, err := bot.UpdatesViaLongPolling(ctx, &tgbotapi.GetUpdatesParams{Timeout: tgapi.LongPollTimeoutSeconds})
 	if err != nil {
 		fatal("не удалось запустить long polling", "err", err)
 	}

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	tgbotapi "github.com/mymmrac/telego"
+
+	"github.com/golman/telegram-bot/internal/testutil"
 )
 
 // runStart запускает Start и ждёт его возврата не дольше секунды.
@@ -36,7 +38,7 @@ func cancelledContext() context.Context {
 }
 
 func TestStartStopsOnShutdown(t *testing.T) {
-	logs := captureLog(t)
+	logs := testutil.CaptureLog(t)
 	b := &VBBot{mediamsg: map[string]*MediaMessage{}}
 	ch := make(chan tgbotapi.Update)
 	close(ch)
@@ -53,7 +55,7 @@ func TestStartStopsOnShutdown(t *testing.T) {
 // а ждёт, пока telego закроет канал. Иначе обновления, которые ещё лежат
 // в буфере канала, были бы потеряны.
 func TestStartWaitsForUpdatesClose(t *testing.T) {
-	captureLog(t)
+	testutil.CaptureLog(t)
 	b := &VBBot{mediamsg: map[string]*MediaMessage{}, ticker: time.NewTicker(time.Hour)}
 	ch := make(chan tgbotapi.Update)
 	done := make(chan error, 1)
@@ -79,7 +81,7 @@ func TestStartWaitsForUpdatesClose(t *testing.T) {
 // Start возвращает ошибку, чтобы main завершился с ненулевым кодом
 // и supervisor перезапустил бота.
 func TestStartFailsWhenUpdatesClosedUnexpectedly(t *testing.T) {
-	captureLog(t)
+	testutil.CaptureLog(t)
 	b := &VBBot{mediamsg: map[string]*MediaMessage{}}
 	ch := make(chan tgbotapi.Update)
 	close(ch)
@@ -96,7 +98,7 @@ func TestStartFailsWhenUpdatesClosedUnexpectedly(t *testing.T) {
 // TestStartFlushesPendingAlbums: при остановке накопленные альбомы
 // публикуются сразу, не дожидаясь тикера, а уже отправленные — нет.
 func TestStartFlushesPendingAlbums(t *testing.T) {
-	captureLog(t)
+	testutil.CaptureLog(t)
 	b, f := newTestBot(t, nil)
 	album := func(photo string, state MessageState) *MediaMessage {
 		return &MediaMessage{
@@ -137,7 +139,7 @@ func TestStartFlushesPendingAlbums(t *testing.T) {
 // в буфер канала, обрабатываются до выхода. Telegram считает их доставленными,
 // и без обработки они бы пропали. Альбом из буфера публикуется при остановке.
 func TestStartDrainsBufferedUpdates(t *testing.T) {
-	captureLog(t)
+	testutil.CaptureLog(t)
 	b, f := newTestBot(t, nil)
 	b.mediamsg = map[string]*MediaMessage{}
 	ch := make(chan tgbotapi.Update, 2)
@@ -171,7 +173,7 @@ func TestStartDrainsBufferedUpdates(t *testing.T) {
 // Запросов к API здесь быть не может: клиента нет, поэтому фейковый API
 // не нужен.
 func TestDispatchRecoversFromPanic(t *testing.T) {
-	logs := captureLog(t)
+	logs := testutil.CaptureLog(t)
 	b := &VBBot{}
 	update := tgbotapi.Update{UpdateID: 7, CallbackQuery: &tgbotapi.CallbackQuery{ID: "q"}}
 
@@ -192,7 +194,7 @@ func TestDispatchRecoversFromPanic(t *testing.T) {
 // TestTickRecoversFromAlbumPanic: паника при отправке альбома по тикеру
 // логируется, не роняет процесс и не повторяется на следующих тиках.
 func TestTickRecoversFromAlbumPanic(t *testing.T) {
-	logs := captureLog(t)
+	logs := testutil.CaptureLog(t)
 	b := &VBBot{mediamsg: map[string]*MediaMessage{"album": pendingAlbum(MessageStateInit)}}
 	clock := useFakeClock(b)
 
@@ -220,7 +222,7 @@ func TestTickRecoversFromAlbumPanic(t *testing.T) {
 // TestFlushRecoversFromAlbumPanic: паника на одном альбоме при остановке
 // не мешает очистить накопитель и не выходит из flushMediaGroups.
 func TestFlushRecoversFromAlbumPanic(t *testing.T) {
-	logs := captureLog(t)
+	logs := testutil.CaptureLog(t)
 	b := &VBBot{mediamsg: map[string]*MediaMessage{
 		"a": pendingAlbum(MessageStateInit),
 		"b": pendingAlbum(MessageStateInit),

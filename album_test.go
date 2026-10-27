@@ -9,6 +9,7 @@ import (
 	tgbotapi "github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/post"
+	"github.com/golman/telegram-bot/internal/testutil"
 )
 
 // pressButton нажимает кнопку с callback data data под подтверждением,
@@ -289,7 +290,7 @@ func TestLateAlbumItem(t *testing.T) {
 // TestSentAlbumKeptForLateWindow: отправленный альбом хранится albumLateWindow
 // после отправки и удаляется ровно по его истечении.
 func TestSentAlbumKeptForLateWindow(t *testing.T) {
-	captureLog(t)
+	testutil.CaptureLog(t)
 	vb, _ := newTestBot(t, nil)
 	clock := useFakeClock(vb)
 	vb.mediamsg = map[string]*MediaMessage{"album": pendingAlbum(MessageStateInit)}
@@ -309,7 +310,7 @@ func TestSentAlbumKeptForLateWindow(t *testing.T) {
 // после последнего фото: каждое новое фото откладывает отправку, поэтому
 // медленно загружаемый альбом не разрывается на части.
 func TestAlbumQuietPeriod(t *testing.T) {
-	captureLog(t)
+	testutil.CaptureLog(t)
 	b, f := newTestBot(t, nil)
 	b.mediamsg = map[string]*MediaMessage{}
 	clock := useFakeClock(b)
@@ -364,7 +365,7 @@ func TestAlbumAuthOnce(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			captureLog(t)
+			testutil.CaptureLog(t)
 			b, f := newTestBot(t, tt.fail)
 			b.mediamsg = map[string]*MediaMessage{}
 			b.cfg.authEnabled = true
@@ -411,7 +412,7 @@ func TestAlbumAuthOnce(t *testing.T) {
 // есть и фото, и подпись. Альбом без подписи сразу получает отказ при отправке,
 // без обещания перед ним.
 func TestAlbumDelayPromise(t *testing.T) {
-	captureLog(t)
+	testutil.CaptureLog(t)
 	b, f := newTestBot(t, nil)
 	b.mediamsg = map[string]*MediaMessage{}
 	clock := useFakeClock(b)

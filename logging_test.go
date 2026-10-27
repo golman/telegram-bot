@@ -12,6 +12,8 @@ import (
 	"testing"
 
 	tgbotapi "github.com/mymmrac/telego"
+
+	"github.com/golman/telegram-bot/internal/testutil"
 )
 
 const testToken = "123456:SECRETSECRETSECRETSECRETSECRETSECRE"
@@ -33,7 +35,7 @@ func TestTelegoLogger(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logs := captureLog(t)
+			logs := testutil.CaptureLog(t)
 			tt.log(newTelegoLogger(testToken, tt.debug))
 
 			out := logs.String()
@@ -64,7 +66,7 @@ func TestBotOptionsLogging(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logs := captureLog(t)
+			logs := testutil.CaptureLog(t)
 			srv := httptest.NewServer(&fakeAPI{})
 			t.Cleanup(srv.Close)
 			bot, err := tgbotapi.NewBot(testToken, append(botOptions(testToken, tt.debug), tgbotapi.WithAPIServer(srv.URL))...)
@@ -103,7 +105,7 @@ func TestParseLogLevel(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.raw, func(t *testing.T) {
-			logs := captureLog(t)
+			logs := testutil.CaptureLog(t)
 			if got := parseLogLevel(tt.raw); got != tt.wantDebug {
 				t.Errorf("parseLogLevel(%q) = %v, ожидалось %v", tt.raw, got, tt.wantDebug)
 			}
@@ -150,7 +152,7 @@ func TestEnvHelpers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logs := captureLog(t)
+			logs := testutil.CaptureLog(t)
 			t.Setenv(key, tt.raw)
 
 			if got := tt.get(); got != tt.want {
@@ -178,7 +180,7 @@ func TestSetupLogging(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run("LOG_LEVEL="+tt.level, func(t *testing.T) {
-			captureLog(t) // восстановит slog.Default после теста
+			testutil.CaptureLog(t) // восстановит slog.Default после теста
 			t.Cleanup(func() { logLevel.Set(slog.LevelInfo) })
 			file := filepath.Join(t.TempDir(), "logs", "bot.log")
 			t.Setenv("LOG_FILE_PATH", file)
@@ -214,7 +216,7 @@ func TestSetupLogging(t *testing.T) {
 // TestSetupLoggingBadConfigWarning: предупреждение о некорректной LOG_*
 // переменной пишется в формате бота, а не в формате пакета log.
 func TestSetupLoggingBadConfigWarning(t *testing.T) {
-	captureLog(t)
+	testutil.CaptureLog(t)
 	t.Cleanup(func() { logLevel.Set(slog.LevelInfo) })
 	t.Setenv("LOG_FILE_PATH", filepath.Join(t.TempDir(), "bot.log"))
 	t.Setenv("LOG_MAX_BACKUPS", "abc")

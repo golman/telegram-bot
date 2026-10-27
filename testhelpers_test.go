@@ -1,33 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"log"
-	"log/slog"
 	"reflect"
-	"testing"
 	"time"
 
 	tgbotapi "github.com/mymmrac/telego"
 )
-
-// captureLog перенаправляет логи slog в буфер до конца теста. Формат тот же,
-// что в проде (newLogHandler), уровень — debug, чтобы видеть все записи.
-func captureLog(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	var buf bytes.Buffer
-	prev := slog.Default()
-	// slog.SetDefault перенаправляет и пакет log; его вывод восстанавливается отдельно.
-	prevOut, prevFlags := log.Writer(), log.Flags()
-	slog.SetDefault(slog.New(newLogHandler(&buf, slog.LevelDebug)))
-	t.Cleanup(func() {
-		slog.SetDefault(prev)
-		log.SetOutput(prevOut)
-		log.SetFlags(prevFlags)
-	})
-	return &buf
-}
 
 // fakeClock — управляемые часы для тикера альбомов: время двигает тест.
 type fakeClock struct{ t time.Time }

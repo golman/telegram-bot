@@ -1,4 +1,5 @@
-package main
+// Package tgapi оборачивает запросы к Bot API: повтор при 429 и дедлайн каждой попытки.
+package tgapi
 
 import (
 	"context"
@@ -67,19 +68,19 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// longPollTimeoutSeconds — сколько Telegram держит запрос getUpdates без новых обновлений.
-const longPollTimeoutSeconds = 8
+// LongPollTimeoutSeconds — сколько Telegram держит запрос getUpdates без новых обновлений.
+const LongPollTimeoutSeconds = 8
 
-// apiTimeout — предельное время одной попытки запроса к Bot API. Клиент fasthttp
+// APITimeout — предельное время одной попытки запроса к Bot API. Клиент fasthttp
 // в telego создан без таймаута, и без дедлайна зависший запрос остановил бы
 // цикл событий навсегда. Должен быть больше long polling, иначе getUpdates
 // обрывался бы раньше ответа Telegram.
-const apiTimeout = 15 * time.Second
+const APITimeout = 15 * time.Second
 
-// newAPICaller собирает caller для бота: повтор при 429 поверх таймаута,
+// NewCaller собирает caller для бота: повтор при 429 поверх таймаута,
 // чтобы у каждой попытки был свой дедлайн.
-func newAPICaller() ta.Caller {
-	return newRateLimitCaller(newTimeoutCaller(ta.DefaultFastHTTPCaller, apiTimeout))
+func NewCaller() ta.Caller {
+	return newRateLimitCaller(newTimeoutCaller(ta.DefaultFastHTTPCaller, APITimeout))
 }
 
 // timeoutCaller ограничивает каждый запрос временем timeout. Используется

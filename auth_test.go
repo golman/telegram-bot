@@ -7,6 +7,7 @@ import (
 	tgbotapi "github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/post"
+	"github.com/golman/telegram-bot/internal/testutil"
 )
 
 // authUpdate — обычное текстовое сообщение из личного чата пользователя.
@@ -76,7 +77,7 @@ func TestHandleUpdateAuth(t *testing.T) {
 	serviceTexts := []string{AuthCheckFailedMessage, NotSubscribedMessage, FiltersFailedMessage}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logs := captureLog(t)
+			logs := testutil.CaptureLog(t)
 			b, api := newTestBot(t, tt.fail)
 			b.cfg.authEnabled = tt.authEnabled
 			if tt.member != "" {
