@@ -22,6 +22,10 @@ type album struct {
 	expiresAt time.Time
 	// lateNotified — автор уже получил albumItemLateMessage.
 	lateNotified bool
+	// published — альбом вышел в канал. Опоздавшие фото неопубликованного
+	// альбома (отказ, ошибка API) не порождают albumItemLateMessage: автор
+	// уже получил отказ, а публикации не было.
+	published bool
 	// skipped — сколько элементов альбома не фото (видео, файлы); они не публикуются.
 	skipped int
 	// rejected — автор не прошёл проверку подписки или фильтры, элементы отбрасываются.

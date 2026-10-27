@@ -312,3 +312,22 @@ func TestPublishErrorHidesAPIText(t *testing.T) {
 		})
 	}
 }
+
+// TestEmptySendMessageResponse: если Bot API ответил на sendMessage пустым
+// результатом, бот не паникует, а сообщает автору о неудаче без кнопки.
+func TestEmptySendMessageResponse(t *testing.T) {
+	logs := testutil.CaptureLog(t)
+	b, f := newTestBot(t, nil)
+	f.respond("sendMessage", "null")
+	m := authorMessage(100)
+	m.Text = "Продам"
+
+	b.sendPlainMessage(telego.Update{Message: m})
+
+	if out := logs.String(); !strings.Contains(out, "пустой ответ на sendMessage") {
+		t.Errorf("получено без ошибки о пустом ответе, ожидалась:\n%s", out)
+	}
+	if got, want := authorTexts(t, f), []string{publishFailedMessage}; !reflect.DeepEqual(got, want) {
+		t.Errorf("получены тексты автору %q, ожидались %q", got, want)
+	}
+}

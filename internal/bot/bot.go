@@ -197,6 +197,11 @@ func (b *Bot) addAlbumItem(update telego.Update) {
 // добавить его в опубликованный пост нельзя, поэтому автор один раз на альбом
 // получает albumItemLateMessage.
 func (b *Bot) rejectLateAlbumItem(a *album, msg *telego.Message) {
+	if !a.published {
+		slog.Info("фото пришло после отказа в публикации альбома, пропущено",
+			"user_id", msg.Chat.ID, "message_id", msg.MessageID, "media_group_id", msg.MediaGroupID)
+		return
+	}
 	slog.Info("фото пришло после отправки альбома, не опубликовано",
 		"user_id", msg.Chat.ID, "message_id", msg.MessageID, "media_group_id", msg.MediaGroupID)
 	if a.lateNotified {

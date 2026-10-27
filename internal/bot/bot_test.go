@@ -394,3 +394,22 @@ func TestRunConfirmsProcessedUpdates(t *testing.T) {
 		})
 	}
 }
+
+// TestDispatchIgnoresCommands: текст, начинающийся с «/», — команда; бот её
+// пока молча пропускает и уж точно не публикует в канал.
+func TestDispatchIgnoresCommands(t *testing.T) {
+	for _, text := range []string{"/start", "/help@test_bot", "/ продам"} {
+		t.Run(text, func(t *testing.T) {
+			testutil.CaptureLog(t)
+			b, f := newTestBot(t, nil)
+			m := authorMessage(100)
+			m.Text = text
+
+			b.dispatch(telego.Update{UpdateID: 1, Message: m})
+
+			if calls := f.allCalls(); len(calls) != 0 {
+				t.Errorf("получено запросов к API %d, ожидалось 0: %v", len(calls), calls)
+			}
+		})
+	}
+}

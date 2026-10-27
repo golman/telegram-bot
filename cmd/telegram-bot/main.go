@@ -74,7 +74,12 @@ func runWith(parent context.Context, getenv func(string) string, stdout io.Write
 		stop()
 	}()
 
-	updates, err := client.UpdatesViaLongPolling(ctx, &telego.GetUpdatesParams{Timeout: tgapi.LongPollTimeoutSeconds})
+	updates, err := client.UpdatesViaLongPolling(ctx, &telego.GetUpdatesParams{
+		Timeout: tgapi.LongPollTimeoutSeconds,
+		// Явно: без списка Telegram берёт сохранённый с прошлого раза, и если его
+		// когда-то сузили, нажатия кнопок (callback_query) перестали бы приходить.
+		AllowedUpdates: []string{"message", "callback_query"},
+	})
 	if err != nil {
 		slog.Error("не удалось запустить long polling", "err", err)
 		return 1

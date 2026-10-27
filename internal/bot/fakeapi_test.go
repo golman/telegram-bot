@@ -98,8 +98,10 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"ok":true,"result":[]}`))
 	case "sendMediaGroup":
 		// Bot API отвечает на sendMediaGroup массивом сообщений, а не объектом.
-		_, _ = w.Write(fmt.Appendf(nil, `{"ok":true,"result":[{"message_id":%d,"date":1,"chat":{"id":%d,"type":"channel"}}]}`,
-			testMediaGroupMessageID, testChannelID))
+		// Сообщений в ответе несколько, по одному на фото; кнопка должна вести
+		// на первое — на нём подпись.
+		_, _ = w.Write(fmt.Appendf(nil, `{"ok":true,"result":[{"message_id":%d,"date":1,"chat":{"id":%d,"type":"channel"}},{"message_id":%d,"date":1,"chat":{"id":%d,"type":"channel"}}]}`,
+			testMediaGroupMessageID, testChannelID, testMediaGroupMessageID+2, testChannelID))
 	case "sendPhoto":
 		_, _ = w.Write(fmt.Appendf(nil, `{"ok":true,"result":{"message_id":%d,"date":1,"chat":{"id":%d,"type":"channel"}}}`,
 			testPhotoMessageID, testChannelID))

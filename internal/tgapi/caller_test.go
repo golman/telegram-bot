@@ -74,6 +74,12 @@ func TestRateLimitCaller(t *testing.T) {
 			wantCalls: 3, wantSleep: []time.Duration{time.Second, time.Second},
 		},
 		{
+			// Граница: ровно максимум ещё ждём.
+			name:      "retry_after равен максимуму — ждём",
+			responses: []stubResponse{apiError(429, 30), okResponse()},
+			wantCalls: 2, wantSleep: []time.Duration{30 * time.Second}, wantOk: true,
+		},
+		{
 			name:      "retry_after больше максимума — без ожидания",
 			responses: []stubResponse{apiError(429, 31)},
 			wantCalls: 1,

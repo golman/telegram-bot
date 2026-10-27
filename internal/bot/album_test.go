@@ -426,3 +426,36 @@ func TestAlbumDelayPromise(t *testing.T) {
 		t.Errorf("автору ушли %q, ожидалось %q", got, want)
 	}
 }
+
+// TestLateItemOfUnpublishedAlbum: если альбом не опубликован (нет подписи,
+// слишком длинный, ошибка API), автор уже получил отказ. Опоздавшие фото
+// такого альбома не публикуются и не порождают «Часть фото пришла после
+// публикации» — публикации не было.
+func TestLateItemOfUnpublishedAlbum(t *testing.T) {
+	tests := []struct {
+		name      string
+		caption   string
+		fail      map[string]string
+		wantTexts []string
+	}{
+		{"без подписи", "", nil, []string{noCaptionMessage}},
+		{"ошибка публикации", "Продам", map[string]string{"sendMediaGroup": "Bad Request: wrong file identifier"}, []string{mediaGroupDelayMessage, publishFailedMessage}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.CaptureLog(t)
+			b, f := newTestBot(t, tt.fail)
+			b.albums = map[string]*album{}
+			clock := useFakeClock(b)
+			b.handleUpdate(telego.Update{Message: albumItem(100, "p1", tt.caption, nil)})
+			clock.wait(b, albumQuietPeriod)
+
+			b.handleUpdate(telego.Update{Message: albumItem(101, "p2", "", nil)})
+			clock.wait(b, albumQuietPeriod)
+
+			if got := authorTexts(t, f); !reflect.DeepEqual(got, tt.wantTexts) {
+				t.Errorf("получены тексты автору %q, ожидались %q", got, tt.wantTexts)
+			}
+		})
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"github.com/mymmrac/telego"
 
 	"github.com/golman/telegram-bot/internal/post"
+	"github.com/golman/telegram-bot/internal/testutil"
 )
 
 // checkTarget проверяет, что запрос правит сообщение messageID в чате chatID.
@@ -47,6 +48,8 @@ func TestHandleCallbackQuery(t *testing.T) {
 		// wantEdits — методы правки по порядку, без answerCallbackQuery.
 		wantEdits []string
 		check     func(t *testing.T, f *fakeAPI)
+		// quiet — в логе нет WARN и ERROR: «message is not modified» — не сбой.
+		quiet bool
 	}{
 		{name: "неизвестное действие", data: "noop_1_2", msg: confirmMsg(textReply()), wantAnswer: callbackInvalidMessage},
 		{name: "пустые данные", data: "", msg: confirmMsg(textReply()), wantAnswer: callbackInvalidMessage},
@@ -168,6 +171,7 @@ func TestHandleCallbackQuery(t *testing.T) {
 			fail:       map[string]string{"editMessageText": notModified},
 			wantAnswer: adRestoredMessage,
 			wantEdits:  []string{"editMessageText", "editMessageText"},
+			quiet:      true,
 		},
 		{
 			name: "ошибка ответа на callback", data: "noop", msg: nil,
@@ -177,6 +181,7 @@ func TestHandleCallbackQuery(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			logs := testutil.CaptureLog(t)
 			vb, f := newTestBot(t, tt.fail)
 			vb.handleCallbackQuery(&telego.CallbackQuery{ID: "q1", Data: tt.data, Message: tt.msg})
 
@@ -207,6 +212,9 @@ func TestHandleCallbackQuery(t *testing.T) {
 
 			if tt.check != nil {
 				tt.check(t, f)
+			}
+			if out := logs.String(); tt.quiet && (strings.Contains(out, "level=WARN") || strings.Contains(out, "level=ERROR")) {
+				t.Errorf("получены WARN или ERROR в логе, ожидалось без них:\n%s", out)
 			}
 		})
 	}

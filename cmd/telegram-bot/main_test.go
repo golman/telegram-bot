@@ -187,6 +187,8 @@ func TestRunServesUpdates(t *testing.T) {
 		"CHANNEL_ID":       "-100",
 		"BOT_AUTH_ENABLED": "false",
 		"LOG_FILE_PATH":    filepath.Join(t.TempDir(), "bot.log"),
+		// На debug telego пишет URL запросов: в логе должна быть маска, а не токен.
+		"LOG_LEVEL": "debug",
 	})
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -213,7 +215,7 @@ func TestRunServesUpdates(t *testing.T) {
 	}
 
 	out := stdout.String()
-	for _, want := range []string{`msg="Telegram ограничил частоту запросов, повтор" method=getUpdates`, `msg="бот остановлен"`} {
+	for _, want := range []string{`msg="Telegram ограничил частоту запросов, повтор" method=getUpdates`, `msg="бот остановлен"`, "botBOT_TOKEN/getUpdates"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("получено без записи %q, ожидалась запись:\n%s", want, out)
 		}
@@ -221,14 +223,23 @@ func TestRunServesUpdates(t *testing.T) {
 	if strings.Contains(out, "SECRET") {
 		t.Errorf("получен токен в логе, ожидалось его отсутствие:\n%s", out)
 	}
+	// Без явного allowed_updates Telegram берёт сохранённое с прошлого раза:
+	// если его когда-то сузили, кнопки (callback_query) перестали бы приходить.
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	if want := []any{"message", "callback_query"}; !reflect.DeepEqual(api.allowed, want) {
+		t.Errorf("получены allowed_updates %v, ожидались %v", api.allowed, want)
+	}
 }
 
 // runAPI — фейковый Bot API для TestRunServesUpdates: первый getUpdates
 // отвечает 429, второй — одним текстовым объявлением, дальше — пусто.
 // published закрывается, когда объявление ушло в канал.
 type runAPI struct {
-	mu        sync.Mutex
-	polls     int
+	mu    sync.Mutex
+	polls int
+	// allowed — allowed_updates первого getUpdates.
+	allowed   any
 	published chan struct{}
 	once      sync.Once
 }
@@ -239,9 +250,14 @@ func (a *runAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	switch path.Base(r.URL.Path) {
 	case "getUpdates":
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
 		a.mu.Lock()
 		a.polls++
 		n := a.polls
+		if n == 1 {
+			a.allowed = body["allowed_updates"]
+		}
 		a.mu.Unlock()
 		switch n {
 		case 1:

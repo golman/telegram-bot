@@ -18,6 +18,9 @@ var errEmptyMediaGroupResponse = errors.New("пустой ответ на sendMe
 // errEmptyPhotoResponse — Bot API ответил на sendPhoto без сообщения.
 var errEmptyPhotoResponse = errors.New("пустой ответ на sendPhoto")
 
+// errEmptyMessageResponse — Bot API ответил на sendMessage без сообщения.
+var errEmptyMessageResponse = errors.New("пустой ответ на sendMessage")
+
 func (b *Bot) sendMediaGroup(a *album) {
 	if len(a.fileIDs) == 0 {
 		// В альбоме только видео или файлы.
@@ -67,6 +70,7 @@ func (b *Bot) sendMediaGroup(a *album) {
 	if err != nil {
 		b.reportPublishError(err, a.authorID)
 	} else {
+		a.published = true
 		b.confirmNewAd(a.authorID, a.replyToID, sentMsg[0])
 		if a.skipped > 0 {
 			b.sendTextMessage(albumSkippedMessage, a.authorID)
@@ -131,6 +135,9 @@ func (b *Bot) sendPlainMessage(update telego.Update) {
 		Entities: ents,
 	}
 	sentMsg, err := b.client.SendMessage(context.Background(), emsg)
+	if err == nil && sentMsg == nil {
+		err = errEmptyMessageResponse
+	}
 	if err != nil {
 		b.reportPublishError(err, update.Message.Chat.ID)
 	} else {
