@@ -14,6 +14,7 @@ import (
 
 	tgbotapi "github.com/mymmrac/telego"
 
+	"github.com/golman/telegram-bot/internal/config"
 	"github.com/golman/telegram-bot/internal/tgapi"
 )
 
@@ -37,22 +38,16 @@ func fatal(msg string, args ...any) {
 }
 
 func main() {
-	debug, err := setupLogging()
+	cfg, err := initLogging(os.Getenv)
+	if errors.Is(err, config.ErrNoToken) || errors.Is(err, config.ErrNoChannel) {
+		fatal(err.Error())
+	}
 	if err != nil {
 		fatal("не удалось настроить логирование", "err", err)
 	}
 
-	botToken := getEnvOrDefault("BOT_TOKEN", "")
-	if botToken == "" {
-		fatal("не задан BOT_TOKEN")
-	}
-	channelID := getEnvInt64OrDefault("CHANNEL_ID", 0)
-	if channelID == 0 {
-		fatal("не задан или некорректен CHANNEL_ID")
-	}
-
-	opts := append(botOptions(botToken, debug), tgbotapi.WithAPICaller(tgapi.NewCaller()))
-	bot, err := tgbotapi.NewBot(botToken, opts...)
+	opts := append(botOptions(cfg.Token, cfg.Log.Debug), tgbotapi.WithAPICaller(tgapi.NewCaller()))
+	bot, err := tgbotapi.NewBot(cfg.Token, opts...)
 	if err != nil {
 		fatal("не удалось создать клиент Bot API", "err", err)
 	}
@@ -74,11 +69,11 @@ func main() {
 
 	b := VBBot{
 		tgbot:     bot,
-		channelId: channelID,
+		channelId: cfg.ChannelID,
 		mediamsg:  map[string]*MediaMessage{},
 		ticker:    time.NewTicker(albumTickInterval),
 		cfg: VBBotCfg{
-			authEnabled: getEnvBoolOrDefault("BOT_AUTH_ENABLED", true),
+			authEnabled: cfg.AuthEnabled,
 		},
 	}
 	if err := b.Start(ctx, updates); err != nil {

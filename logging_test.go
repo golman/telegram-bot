@@ -90,81 +90,6 @@ func TestBotOptionsLogging(t *testing.T) {
 	}
 }
 
-func TestParseLogLevel(t *testing.T) {
-	tests := []struct {
-		raw       string
-		wantDebug bool
-		wantWarn  bool
-	}{
-		{"", false, false},
-		{"info", false, false},
-		{"INFO", false, false},
-		{"debug", true, false},
-		{" Debug ", true, false},
-		{"trace", false, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.raw, func(t *testing.T) {
-			logs := testutil.CaptureLog(t)
-			if got := parseLogLevel(tt.raw); got != tt.wantDebug {
-				t.Errorf("parseLogLevel(%q) = %v, ожидалось %v", tt.raw, got, tt.wantDebug)
-			}
-			if got := strings.Contains(logs.String(), "LOG_LEVEL"); got != tt.wantWarn {
-				t.Errorf("предупреждение в логе: %v, ожидалось %v:\n%s", got, tt.wantWarn, logs.String())
-			}
-		})
-	}
-}
-
-// TestEnvHelpers: пустая переменная даёт значение по умолчанию молча,
-// некорректная — значение по умолчанию и предупреждение в лог с именем
-// переменной, корректная разбирается. Пробелы по краям игнорируются.
-func TestEnvHelpers(t *testing.T) {
-	const key = "TEST_TELEGRAM_BOT_ENV"
-	tests := []struct {
-		name     string
-		raw      string
-		get      func() any
-		want     any
-		wantWarn bool
-	}{
-		{"строка: пусто", "", func() any { return getEnvOrDefault(key, "def") }, "def", false},
-		{"строка: только пробелы", "   ", func() any { return getEnvOrDefault(key, "def") }, "def", false},
-		{"строка: значение с пробелами", "  abc ", func() any { return getEnvOrDefault(key, "def") }, "abc", false},
-
-		{"int: пусто", "", func() any { return getEnvIntOrDefault(key, 5) }, 5, false},
-		{"int: число", " 12 ", func() any { return getEnvIntOrDefault(key, 5) }, 12, false},
-		{"int: не число", "abc", func() any { return getEnvIntOrDefault(key, 5) }, 5, true},
-		// Размеры и сроки логов должны быть положительными.
-		{"int: ноль", "0", func() any { return getEnvIntOrDefault(key, 5) }, 5, true},
-		{"int: отрицательное", "-3", func() any { return getEnvIntOrDefault(key, 5) }, 5, true},
-
-		// ID каналов отрицательные и не помещаются в int32.
-		{"int64: ID канала", "-1001234567890", func() any { return getEnvInt64OrDefault(key, 0) }, int64(-1001234567890), false},
-		{"int64: пусто", "", func() any { return getEnvInt64OrDefault(key, 7) }, int64(7), false},
-		{"int64: не число", "-100abc", func() any { return getEnvInt64OrDefault(key, 7) }, int64(7), true},
-
-		{"bool: пусто", "", func() any { return getEnvBoolOrDefault(key, true) }, true, false},
-		{"bool: false", "false", func() any { return getEnvBoolOrDefault(key, true) }, false, false},
-		{"bool: 0", "0", func() any { return getEnvBoolOrDefault(key, true) }, false, false},
-		{"bool: TRUE", " TRUE ", func() any { return getEnvBoolOrDefault(key, false) }, true, false},
-		{"bool: не bool", "да", func() any { return getEnvBoolOrDefault(key, true) }, true, true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			logs := testutil.CaptureLog(t)
-			t.Setenv(key, tt.raw)
-
-			if got := tt.get(); got != tt.want {
-				t.Errorf("значение %v (%T), ожидалось %v (%T)", got, got, tt.want, tt.want)
-			}
-			if got := strings.Contains(logs.String(), key); got != tt.wantWarn {
-				t.Errorf("предупреждение в логе: %v, ожидалось %v:\n%s", got, tt.wantWarn, logs.String())
-			}
-		})
-	}
-}
-
 // TestSetupLogging: логи идут в файл в формате key=value со временем в UTC,
 // LOG_LEVEL управляет уровнем, а предупреждение о некорректном LOG_LEVEL
 // попадает в файл, а не теряется до настройки вывода.
@@ -183,17 +108,16 @@ func TestSetupLogging(t *testing.T) {
 			testutil.CaptureLog(t) // восстановит slog.Default после теста
 			t.Cleanup(func() { logLevel.Set(slog.LevelInfo) })
 			file := filepath.Join(t.TempDir(), "logs", "bot.log")
-			t.Setenv("LOG_FILE_PATH", file)
-			t.Setenv("LOG_LEVEL", tt.level)
+			env := testEnv(map[string]string{"LOG_FILE_PATH": file, "LOG_LEVEL": tt.level})
 
-			debug, err := setupLogging()
+			cfg, err := initLogging(env)
 			if err != nil {
-				t.Fatalf("setupLogging: %v", err)
+				t.Fatalf("initLogging: %v", err)
 			}
 			slog.Debug("проверка отладки")
 
-			if debug != tt.wantDebug {
-				t.Errorf("debug = %v, ожидалось %v", debug, tt.wantDebug)
+			if cfg.Log.Debug != tt.wantDebug {
+				t.Errorf("получено debug = %v, ожидалось %v", cfg.Log.Debug, tt.wantDebug)
 			}
 			raw, err := os.ReadFile(file)
 			if err != nil {
@@ -206,7 +130,8 @@ func TestSetupLogging(t *testing.T) {
 			if got := strings.Contains(out, "проверка отладки"); got != tt.wantDebug {
 				t.Errorf("debug-запись в файле: %v, ожидалось %v:\n%s", got, tt.wantDebug, out)
 			}
-			if got := strings.Contains(out, "некорректный LOG_LEVEL"); got != tt.wantWarn {
+			badLevel := regexp.MustCompile(`(?m)^time=\S+Z level=WARN msg="некорректная переменная окружения.*var=LOG_LEVEL`)
+			if got := badLevel.MatchString(out); got != tt.wantWarn {
 				t.Errorf("предупреждение о LOG_LEVEL в файле: %v, ожидалось %v:\n%s", got, tt.wantWarn, out)
 			}
 		})
@@ -218,16 +143,28 @@ func TestSetupLogging(t *testing.T) {
 func TestSetupLoggingBadConfigWarning(t *testing.T) {
 	testutil.CaptureLog(t)
 	t.Cleanup(func() { logLevel.Set(slog.LevelInfo) })
-	t.Setenv("LOG_FILE_PATH", filepath.Join(t.TempDir(), "bot.log"))
-	t.Setenv("LOG_MAX_BACKUPS", "abc")
+	env := testEnv(map[string]string{"LOG_FILE_PATH": filepath.Join(t.TempDir(), "bot.log"), "LOG_MAX_BACKUPS": "abc"})
 
 	stdout := captureStdout(t, func() {
-		if _, err := setupLogging(); err != nil {
-			t.Fatalf("setupLogging: %v", err)
+		if _, err := initLogging(env); err != nil {
+			t.Fatalf("initLogging: %v", err)
 		}
 	})
 	if !regexp.MustCompile(`(?m)^time=\S+Z level=WARN msg="некорректная переменная окружения.*var=LOG_MAX_BACKUPS`).MatchString(stdout) {
 		t.Errorf("нет предупреждения о LOG_MAX_BACKUPS в формате бота:\n%s", stdout)
+	}
+}
+
+// testEnv — подставной getenv: BOT_TOKEN и CHANNEL_ID заданы, остальное из vars.
+func testEnv(vars map[string]string) func(string) string {
+	return func(key string) string {
+		switch key {
+		case "BOT_TOKEN":
+			return testToken
+		case "CHANNEL_ID":
+			return "-100"
+		}
+		return vars[key]
 	}
 }
 

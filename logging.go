@@ -6,28 +6,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	tgbotapi "github.com/mymmrac/telego"
 	lumberjack "gopkg.in/natefinch/lumberjack.v2"
-)
 
-const (
-	defaultLogFilePath   = "logs/telegram-bot.log"
-	defaultLogMaxSizeMB  = 20
-	defaultLogMaxBackups = 5
-	defaultLogMaxAgeDays = 14
-	defaultLogCompress   = true
+	"github.com/golman/telegram-bot/internal/config"
 )
-
-type fileLogConfig struct {
-	filePath   string
-	maxSizeMB  int
-	maxBackups int
-	maxAgeDays int
-	compress   bool
-}
 
 // logLevel — уровень логов бота, его выставляет LOG_LEVEL.
 var logLevel = new(slog.LevelVar)
@@ -46,100 +31,49 @@ func newLogHandler(w io.Writer, level slog.Leveler) slog.Handler {
 	})
 }
 
-// setupLogging направляет логи в stdout и в файл с ротацией и выставляет
-// уровень из LOG_LEVEL. Возвращает true, если включён уровень debug.
-func setupLogging() (bool, error) {
-	// До открытия файла логи идут в stdout в том же формате: туда попадут
-	// предупреждения о некорректных LOG_* при разборе конфига.
-	slog.SetDefault(slog.New(newLogHandler(os.Stdout, logLevel)))
-	cfg := loadLogConfigFromEnv()
+// initLogging читает конфиг, настраивает по нему логи и пишет в них
+// предупреждения конфига — уже после открытия файла, чтобы они попали и туда.
+// Возвращает ошибку настройки логов или ошибку config.Load (нет BOT_TOKEN
+// или CHANNEL_ID); во втором случае логи всё равно настроены.
+func initLogging(getenv func(string) string) (config.Config, error) {
+	cfg, warnings, loadErr := config.Load(getenv)
+	setupErr := setupLogging(cfg.Log)
+	// При ошибке настройки файла предупреждения уходят хотя бы в stdout.
+	for _, w := range warnings {
+		slog.Warn("некорректная переменная окружения, используется значение по умолчанию",
+			"var", w.Var, "value", w.Value, "default", w.Default)
+	}
+	if setupErr != nil {
+		return cfg, setupErr
+	}
+	return cfg, loadErr
+}
 
-	if err := os.MkdirAll(filepath.Dir(cfg.filePath), 0o755); err != nil {
-		return false, fmt.Errorf("создание каталога логов: %w", err)
+// setupLogging направляет логи в stdout и в файл с ротацией и выставляет
+// уровень из cfg.Debug.
+func setupLogging(cfg config.Log) error {
+	// До открытия файла логи идут в stdout в том же формате.
+	slog.SetDefault(slog.New(newLogHandler(os.Stdout, logLevel)))
+
+	if err := os.MkdirAll(filepath.Dir(cfg.FilePath), 0o755); err != nil {
+		return fmt.Errorf("создание каталога логов: %w", err)
 	}
 
 	rotatingLog := &lumberjack.Logger{
-		Filename:   cfg.filePath,
-		MaxSize:    cfg.maxSizeMB,
-		MaxBackups: cfg.maxBackups,
-		MaxAge:     cfg.maxAgeDays,
-		Compress:   cfg.compress,
+		Filename:   cfg.FilePath,
+		MaxSize:    cfg.MaxSizeMB,
+		MaxBackups: cfg.MaxBackups,
+		MaxAge:     cfg.MaxAgeDays,
+		Compress:   cfg.Compress,
 	}
 
 	slog.SetDefault(slog.New(newLogHandler(io.MultiWriter(os.Stdout, rotatingLog), logLevel)))
-	// LOG_LEVEL разбирается после настройки вывода, чтобы предупреждение
-	// о некорректном значении попало в файл.
-	debug := parseLogLevel(getEnvOrDefault("LOG_LEVEL", "info"))
-	if debug {
+	if cfg.Debug {
 		logLevel.Set(slog.LevelDebug)
 	}
-	slog.Info("логирование настроено", "file", cfg.filePath, "log_level", logLevel.Level(),
-		"max_size_mb", cfg.maxSizeMB, "max_backups", cfg.maxBackups, "max_age_days", cfg.maxAgeDays, "compress", cfg.compress)
-
-	return debug, nil
-}
-
-// warnBadEnv сообщает, что переменная окружения задана некорректно.
-func warnBadEnv(key, raw string, fallback any) {
-	slog.Warn("некорректная переменная окружения, используется значение по умолчанию",
-		"var", key, "value", raw, "default", fallback)
-}
-
-func loadLogConfigFromEnv() fileLogConfig {
-	return fileLogConfig{
-		filePath:   getEnvOrDefault("LOG_FILE_PATH", defaultLogFilePath),
-		maxSizeMB:  getEnvIntOrDefault("LOG_MAX_SIZE_MB", defaultLogMaxSizeMB),
-		maxBackups: getEnvIntOrDefault("LOG_MAX_BACKUPS", defaultLogMaxBackups),
-		maxAgeDays: getEnvIntOrDefault("LOG_MAX_AGE_DAYS", defaultLogMaxAgeDays),
-		compress:   getEnvBoolOrDefault("LOG_COMPRESS", defaultLogCompress),
-	}
-}
-
-func getEnvOrDefault(key string, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return fallback
-	}
-	return value
-}
-
-func getEnvIntOrDefault(key string, fallback int) int {
-	raw := strings.TrimSpace(os.Getenv(key))
-	if raw == "" {
-		return fallback
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil || value <= 0 {
-		warnBadEnv(key, raw, fallback)
-		return fallback
-	}
-	return value
-}
-
-func getEnvBoolOrDefault(key string, fallback bool) bool {
-	raw := strings.TrimSpace(os.Getenv(key))
-	if raw == "" {
-		return fallback
-	}
-	value, err := strconv.ParseBool(raw)
-	if err != nil {
-		warnBadEnv(key, raw, fallback)
-		return fallback
-	}
-	return value
-}
-
-func getEnvInt64OrDefault(key string, fallback int64) int64 {
-	raw := strings.TrimSpace(os.Getenv(key))
-	if raw == "" {
-		return fallback
-	}
-	value, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		warnBadEnv(key, raw, fallback)
-		return fallback
-	}
-	return value
+	slog.Info("логирование настроено", "file", cfg.FilePath, "log_level", logLevel.Level(),
+		"max_size_mb", cfg.MaxSizeMB, "max_backups", cfg.MaxBackups, "max_age_days", cfg.MaxAgeDays, "compress", cfg.Compress)
+	return nil
 }
 
 // telegoLogger направляет логи telego в slog, то есть в stdout и в файл
@@ -167,21 +101,6 @@ func (l *telegoLogger) Errorf(format string, args ...any) {
 
 func (l *telegoLogger) text(format string, args ...any) string {
 	return "telego: " + l.replacer.Replace(fmt.Sprintf(format, args...))
-}
-
-// parseLogLevel разбирает LOG_LEVEL и возвращает true для уровня debug.
-// Поддерживаются info (по умолчанию) и debug; другое значение логируется
-// и заменяется на info.
-func parseLogLevel(raw string) bool {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "", "info":
-		return false
-	case "debug":
-		return true
-	default:
-		slog.Warn("некорректный LOG_LEVEL, используется info", "value", raw)
-		return false
-	}
 }
 
 // botOptions — настройки логирования клиента telego. В режиме debug telego

@@ -27,7 +27,7 @@ Telegram-бот на Go (`github.com/mymmrac/telego` v1.12, нужен Go 1.26.7
 ## Команды
 
 ```sh
-go build ./...            # сборка (модуль `github.com/golman/telegram-bot`: `main` в корне, `internal/post`, `internal/tgapi`, `internal/testutil`)
+go build ./...            # сборка (модуль `github.com/golman/telegram-bot`: `main` в корне, `internal/config`, `internal/post`, `internal/tgapi`, `internal/testutil`)
 go run .                  # локальный запуск (нужны переменные окружения ниже)
 go vet ./...
 go test -race ./...       # все тесты всех пакетов
@@ -41,7 +41,7 @@ CI (`.github/workflows/ci.yml`) на каждый push в `master` и PR зап�
 
 ## Конфигурация (переменные окружения)
 
-Читаются через типизированные хелперы в `logging.go` (`getEnvOrDefault`, `getEnvIntOrDefault`, `getEnvInt64OrDefault`, `getEnvBoolOrDefault`). Используй их вместо прямого `os.Getenv`: некорректные значения логируются, и подставляется значение по умолчанию.
+Все переменные читает `config.Load(getenv)` (`internal/config`) в одну структуру `config.Config`. Это чистая функция: значения обрезаются по краям, пустое молча заменяется умолчанием, некорректное (не число, число ≤ 0 для `LOG_MAX_*`, не bool, неизвестный `LOG_LEVEL`) — умолчанием с `config.Warning` в возвращаемом списке; сама она ничего не логирует. Без `BOT_TOKEN` или `CHANNEL_ID` она возвращает `config.ErrNoToken` / `config.ErrNoChannel`, но `Config.Log` и предупреждения всё равно заполнены. `initLogging` (`logging.go`) вызывает `Load`, настраивает логи из `cfg.Log` и только потом пишет предупреждения (`slog.Warn` с полями `var`, `value`, `default`), чтобы они попали в файл; `main` после этого завершается с текстом ошибки. Прямой `os.Getenv` вне `main` не используй. Новая переменная — поле в `Config`, разбор в `Load` и случай в `TestLoad` (`internal/config/config_test.go`).
 
 - `BOT_TOKEN` (обязательно), `CHANNEL_ID` (обязательно, int64 — целевой канал)
 - `BOT_AUTH_ENABLED` (по умолчанию `true`) — принимать объявления только от участников канала `CHANNEL_ID`
@@ -50,7 +50,7 @@ CI (`.github/workflows/ci.yml`) на каждый push в `master` и PR зап�
 
 ## Архитектура
 
-Бот лежит в плоском `package main` в корне; сборка вида поста вынесена в пакет `internal/post`, обёртки запросов к Bot API — в `internal/tgapi`, общие хелперы тестов — в `internal/testutil`; от бота они не зависят. Структура `VBBot` (`telegram-bot.go`) хранит клиент бота, ID канала, конфиг и собираемые медиагруппы.
+Бот лежит в плоском `package main` в корне; разбор переменных окружения вынесен в пакет `internal/config`, сборка вида поста — в `internal/post`, обёртки запросов к Bot API — в `internal/tgapi`, общие хелперы тестов — в `internal/testutil`; от бота они не зависят. Структура `VBBot` (`telegram-bot.go`) хранит клиент бота, ID канала, конфиг и собираемые медиагруппы.
 
 - **Один цикл событий.** `VBBot.Start` делает `select` по каналу обновлений long polling и секундному тикеру (`albumTickInterval`). Вся обработка идёт в этой одной горутине, поэтому `mediamsg` — обычная map без блокировок. Сохраняй это, а если добавляешь горутины, добавь и синхронизацию. Каждый update обрабатывается в `dispatch` под `recover`; шаг тикера — метод `tick()`, а каждый альбом отправляется в `publishAlbum` тоже под `recover` (из `tick()` и при остановке). **Остановка.** `main` отменяет `ctx` по SIGINT/SIGTERM (`signal.NotifyContext`; повторный сигнал завершает процесс сразу). telego прекращает long polling и закрывает канал, а `Start(ctx, ch)` дочитывает буфер канала (Telegram уже считает эти обновления доставленными), публикует накопленные альбомы (`flushMediaGroups`) и возвращает `nil`. Если канал закрылся без отмены `ctx`, `Start` возвращает `errUpdatesClosed`, и процесс завершается с кодом 1.
 - **Обработка сообщения.** `/команды` отсекает `dispatch`, затем `handleUpdate` игнорирует всё, кроме личного чата (`Chat.Type != ChatTypePrivate`), и сообщения без `From`. Элемент альбома уходит в `addAlbumItem` (см. «Медиагруппы»). Остальные сообщения проходят `admit`: `authByChannel` (`auth.go`; возвращает `(bool, error)`, при ошибке пользователь получает `AuthCheckFailedMessage`) и `runFilter` (`filter.go`; возвращает `true`, если сообщение нужно *отклонить*, пока фильтров нет). Затем сообщение, которое не текст и не фото (стикер, видео, документ, геолокация…), отклоняется одним `UnsupportedMessage`, иначе уходит в `sendPlainMessage` / `sendPhotoMessage` (`send.go`). Текст или подпись обязательны, пустые сообщения отклоняются.
