@@ -78,7 +78,7 @@ func TestStartWaitsForUpdatesClose(t *testing.T) {
 }
 
 // TestStartFailsWhenUpdatesClosedUnexpectedly: канал закрылся без остановки,
-// Run возвращает ошибку, чтобы main завершился с ненулевым кодом
+// Run возвращает ошибку, чтобы run вернул код 1
 // и supervisor перезапустил бота.
 func TestStartFailsWhenUpdatesClosedUnexpectedly(t *testing.T) {
 	testutil.CaptureLog(t)

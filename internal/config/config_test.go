@@ -11,7 +11,7 @@ import (
 // некорректная — значение по умолчанию и Warning с именем переменной,
 // исходным значением и умолчанием; корректная разбирается. Пробелы по краям
 // игнорируются. При ошибке (нет BOT_TOKEN или CHANNEL_ID) Log и Warning
-// всё равно заполнены: main настраивает по ним логи до выхода.
+// всё равно заполнены: run настраивает по ним логи до выхода.
 func TestLoad(t *testing.T) {
 	// base — минимальное корректное окружение.
 	base := map[string]string{"BOT_TOKEN": "123:abc", "CHANNEL_ID": "-100"}
@@ -60,7 +60,7 @@ func TestLoad(t *testing.T) {
 			warnings: []Warning{{Var: "LOG_LEVEL", Value: "trace", Default: "info"}},
 			wantErr:  ErrNoToken,
 		},
-		// Без обеих обязательных переменных main, как и раньше, пишет «не задан BOT_TOKEN».
+		// Без обеих обязательных переменных run, как и раньше, пишет «не задан BOT_TOKEN».
 		{name: "нет ни BOT_TOKEN, ни CHANNEL_ID", env: map[string]string{}, want: with(func(c *Config) { c.Token = ""; c.ChannelID = 0 }), wantErr: ErrNoToken},
 		{name: "BOT_TOKEN из пробелов", env: withBase(map[string]string{"BOT_TOKEN": "   "}), want: with(func(c *Config) { c.Token = "" }), wantErr: ErrNoToken},
 		{

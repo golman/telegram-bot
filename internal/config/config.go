@@ -1,7 +1,7 @@
 // Package config читает настройки бота из переменных окружения.
 //
 // Load — чистая функция: она ничего не логирует, а о некорректных значениях
-// сообщает списком Warning, чтобы main записал их, когда логи уже настроены.
+// сообщает списком Warning, чтобы run (cmd/telegram-bot) записал их, когда логи уже настроены.
 package config
 
 import (
@@ -21,7 +21,7 @@ const (
 	defaultAuthEnabled   = true
 )
 
-// Ошибки обязательных переменных. Их текст main пишет в лог перед выходом.
+// Ошибки обязательных переменных. Их текст run пишет в лог перед выходом.
 var (
 	ErrNoToken   = errors.New("не задан BOT_TOKEN")
 	ErrNoChannel = errors.New("не задан или некорректен CHANNEL_ID")
@@ -59,7 +59,7 @@ type Warning struct {
 //
 // Если не задан BOT_TOKEN или CHANNEL_ID, возвращается ErrNoToken или
 // ErrNoChannel, но Config (в том числе Log) и Warning всё равно заполнены,
-// чтобы main мог настроить логи и записать ошибку в файл.
+// чтобы run мог настроить логи и записать ошибку в файл.
 func Load(getenv func(string) string) (Config, []Warning, error) {
 	l := loader{getenv: getenv}
 	cfg := Config{

@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -19,45 +18,34 @@ import (
 	"github.com/golman/telegram-bot/internal/tgapi"
 )
 
-// fatal логирует ошибку запуска и завершает процесс с кодом 1.
-func fatal(msg string, args ...any) {
-	slog.Error(msg, args...)
-	os.Exit(1)
-}
-
-// initLogging читает конфиг, настраивает по нему логи и пишет в них
-// предупреждения конфига — уже после открытия файла, чтобы они попали и туда.
-// Возвращает ошибку настройки логов или ошибку config.Load (нет BOT_TOKEN
-// или CHANNEL_ID); во втором случае логи всё равно настроены.
-func initLogging(getenv func(string) string, stdout io.Writer) (config.Config, error) {
+// run запускает бота и возвращает код выхода процесса: 0 после остановки
+// по сигналу, 1 при ошибке запуска или работы. Конфиг читается через getenv,
+// логи пишутся в stdout и в файл.
+func run(getenv func(string) string, stdout io.Writer) int {
+	logging.Bootstrap(stdout)
 	cfg, warnings, loadErr := config.Load(getenv)
 	setupErr := logging.Setup(cfg.Log, stdout)
-	// При ошибке настройки файла предупреждения уходят хотя бы в stdout
-	// (туда логи направил logging.Bootstrap).
+	// Предупреждения пишутся после открытия файла логов, чтобы попасть и туда;
+	// при ошибке настройки файла — хотя бы в stdout (туда логи направил
+	// logging.Bootstrap).
 	for _, w := range warnings {
 		slog.Warn("некорректная переменная окружения, используется значение по умолчанию",
 			"var", w.Var, "value", w.Value, "default", w.Default)
 	}
 	if setupErr != nil {
-		return cfg, setupErr
+		slog.Error("не удалось настроить логирование", "err", setupErr)
+		return 1
 	}
-	return cfg, loadErr
-}
-
-func main() {
-	logging.Bootstrap(os.Stdout)
-	cfg, err := initLogging(os.Getenv, os.Stdout)
-	if errors.Is(err, config.ErrNoToken) || errors.Is(err, config.ErrNoChannel) {
-		fatal(err.Error())
-	}
-	if err != nil {
-		fatal("не удалось настроить логирование", "err", err)
+	if loadErr != nil { // config.ErrNoToken или config.ErrNoChannel
+		slog.Error(loadErr.Error())
+		return 1
 	}
 
 	opts := append(logging.BotOptions(cfg.Token, cfg.Log.Debug), tgbotapi.WithAPICaller(tgapi.NewCaller()))
 	client, err := tgbotapi.NewBot(cfg.Token, opts...)
 	if err != nil {
-		fatal("не удалось создать клиент Bot API", "err", err)
+		slog.Error("не удалось создать клиент Bot API", "err", err)
+		return 1
 	}
 
 	// SIGINT/SIGTERM отменяют ctx: telego прекращает long polling и закрывает
@@ -72,11 +60,20 @@ func main() {
 
 	updates, err := client.UpdatesViaLongPolling(ctx, &tgbotapi.GetUpdatesParams{Timeout: tgapi.LongPollTimeoutSeconds})
 	if err != nil {
-		fatal("не удалось запустить long polling", "err", err)
+		slog.Error("не удалось запустить long polling", "err", err)
+		return 1
 	}
 
 	if err := bot.New(client, cfg).Run(ctx, updates); err != nil {
+		// Обработку сигналов возвращаем Go до записи ошибки, чтобы повторный
+		// сигнал сразу завершал процесс.
 		stop()
-		fatal("бот остановился с ошибкой", "err", err)
+		slog.Error("бот остановился с ошибкой", "err", err)
+		return 1
 	}
+	return 0
+}
+
+func main() {
+	os.Exit(run(os.Getenv, os.Stdout))
 }
