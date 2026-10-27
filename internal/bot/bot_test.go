@@ -325,3 +325,72 @@ func TestFlushRecoversFromAlbumPanic(t *testing.T) {
 		t.Errorf("после остановки осталось медиагрупп: %d", len(b.albums))
 	}
 }
+
+// TestRunConfirmsProcessedUpdates: перед выходом Run подтверждает Telegram
+// обработанные обновления одним getUpdates с offset = последний update_id + 1.
+// Иначе обновление из последней пачки, пришедшей вместе с сигналом остановки,
+// Telegram не считал бы доставленным и прислал бы снова после перезапуска —
+// объявление вышло бы в канал дважды.
+func TestRunConfirmsProcessedUpdates(t *testing.T) {
+	tests := []struct {
+		name       string
+		updates    []telego.Update
+		fail       map[string]string
+		wantOffset int64 // 0 — getUpdates не вызывается
+	}{
+		{"нет обновлений", nil, nil, 0},
+		{
+			name: "подтверждается последний", wantOffset: 8,
+			updates: []telego.Update{
+				{UpdateID: 5, Message: authorMessage(100)},
+				{UpdateID: 7, CallbackQuery: &telego.CallbackQuery{ID: "q", Data: "noop"}},
+				{UpdateID: 6, Message: authorMessage(101)},
+			},
+		},
+		{
+			// Подтверждение не удалось: это только предупреждение, остановка штатная.
+			name: "ошибка подтверждения", wantOffset: 2,
+			updates: []telego.Update{{UpdateID: 1, Message: authorMessage(100)}},
+			fail:    map[string]string{"getUpdates": "Bad Gateway"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := testutil.CaptureLog(t)
+			b, f := newTestBot(t, tt.fail)
+			b.albums = map[string]*album{}
+			ch := make(chan telego.Update, len(tt.updates))
+			for _, u := range tt.updates {
+				ch <- u
+			}
+			close(ch)
+
+			if err := runBot(t, b, cancelledContext(), ch); err != nil {
+				t.Fatalf("получена ошибка Run %v, ожидался nil", err)
+			}
+			calls := f.byMethod("getUpdates")
+			if tt.wantOffset == 0 {
+				if len(calls) != 0 {
+					t.Errorf("получено getUpdates %d раз, ожидалось 0", len(calls))
+				}
+				return
+			}
+			if len(calls) != 1 {
+				t.Fatalf("получено getUpdates %d раз, ожидался один", len(calls))
+			}
+			body := calls[0].body
+			if got := jsonInt(t, body, "offset"); got != tt.wantOffset {
+				t.Errorf("получен offset %d, ожидался %d", got, tt.wantOffset)
+			}
+			if got := jsonInt(t, body, "limit"); got != 1 {
+				t.Errorf("получен limit %d, ожидался 1", got)
+			}
+			if _, has := body["timeout"]; has {
+				t.Errorf("получен timeout %v, ожидался 0 (подтверждение не должно ждать)", body["timeout"])
+			}
+			if tt.fail != nil && !strings.Contains(logs.String(), `level=WARN msg="не удалось подтвердить обработанные обновления"`) {
+				t.Errorf("получено без предупреждения о подтверждении, ожидалось:\n%s", logs.String())
+			}
+		})
+	}
+}

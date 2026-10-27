@@ -25,6 +25,9 @@ type Bot struct {
 	albums      map[string]*album
 	ticker      *time.Ticker
 	now         func() time.Time
+	// lastUpdateID — наибольший update_id среди обработанных; Run подтверждает его
+	// Telegram перед выходом.
+	lastUpdateID int
 }
 
 // New создаёт бота, который работает через client и публикует объявления
@@ -43,7 +46,8 @@ var errUpdatesClosed = errors.New("канал обновлений закрыт 
 
 // Run обрабатывает обновления до закрытия канала ch. telego закрывает его
 // после отмены ctx, поэтому уже полученные обновления из буфера дочитываются
-// и обрабатываются, а затем публикуются накопленные альбомы.
+// и обрабатываются, затем публикуются накопленные альбомы, а обработанные
+// обновления подтверждаются Telegram (confirmUpdates).
 // Возвращает nil при остановке через ctx и errUpdatesClosed, если канал
 // закрылся сам. Run вызывается один раз: тикер останавливается при выходе.
 func (b *Bot) Run(ctx context.Context, ch <-chan telego.Update) error {
@@ -57,6 +61,7 @@ func (b *Bot) Run(ctx context.Context, ch <-chan telego.Update) error {
 		case update, ok := <-ch:
 			if !ok {
 				b.flushMediaGroups()
+				b.confirmUpdates()
 				if ctx.Err() != nil {
 					slog.Info("бот остановлен")
 					return nil
@@ -84,6 +89,23 @@ func (b *Bot) drainBuffered(ch <-chan telego.Update) {
 			return
 		}
 		b.dispatch(update)
+	}
+}
+
+// confirmUpdates подтверждает Telegram все обработанные обновления. Telegram
+// считает обновление доставленным, только когда следующий getUpdates пришёл
+// с offset больше его update_id. Последнюю пачку, полученную вместе
+// с сигналом остановки, telego уже не подтвердит, и без этого вызова после
+// перезапуска Telegram прислал бы её снова — объявление вышло бы дважды.
+// limit = 1 и timeout = 0: ответ приходит сразу, а обновление, которое
+// в нём окажется, не подтверждается и придёт после перезапуска.
+func (b *Bot) confirmUpdates() {
+	if b.lastUpdateID == 0 {
+		return
+	}
+	params := &telego.GetUpdatesParams{Offset: b.lastUpdateID + 1, Limit: 1}
+	if _, err := b.client.GetUpdates(context.Background(), params); err != nil {
+		slog.Warn("не удалось подтвердить обработанные обновления", "update_id", b.lastUpdateID, "err", err)
 	}
 }
 
@@ -210,6 +232,7 @@ func (b *Bot) clock() time.Time {
 // dispatch обрабатывает одно обновление. Паника внутри обработчика
 // логируется вместе со стеком и не останавливает цикл событий.
 func (b *Bot) dispatch(update telego.Update) {
+	b.lastUpdateID = max(b.lastUpdateID, update.UpdateID)
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("паника при обработке обновления", "update_id", update.UpdateID,

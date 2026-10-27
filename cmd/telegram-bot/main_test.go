@@ -333,3 +333,94 @@ func TestRunFailsOnBadToken(t *testing.T) {
 		t.Errorf("получены запросы %v, ожидался только getMe", methods)
 	}
 }
+
+// TestRunConfirmsLastBatch: сигнал остановки пришёл, пока getUpdates нёс
+// объявление (fasthttp не прерывает запрос по отмене ctx). Если telego успел
+// отдать обновление боту и оно опубликовано, Telegram должен получить
+// подтверждение — getUpdates с offset = 2, иначе после перезапуска объявление
+// пришло бы снова и вышло бы в канал второй раз. telego случайно выбирает
+// между отменой и отдачей обновления, поэтому сценарий повторяется.
+func TestRunConfirmsLastBatch(t *testing.T) {
+	testutil.CaptureLog(t)
+	published := 0
+	for i := range 10 {
+		var (
+			mu        sync.Mutex
+			polls     int
+			offsets   []int
+			sent      bool
+			polling   = make(chan struct{})
+			release   = make(chan struct{})
+			pollingMu sync.Once
+		)
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			switch path.Base(r.URL.Path) {
+			case "getMe":
+				_, _ = io.WriteString(w, `{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"Бот","username":"test_bot"}}`)
+			case "getUpdates":
+				mu.Lock()
+				polls++
+				n := polls
+				if off, ok := body["offset"].(float64); ok {
+					offsets = append(offsets, int(off))
+				}
+				mu.Unlock()
+				if n == 1 {
+					pollingMu.Do(func() { close(polling) })
+					<-release
+					_, _ = io.WriteString(w, `{"ok":true,"result":[{"update_id":1,"message":{"message_id":10,"date":1,`+
+						`"chat":{"id":42,"type":"private"},"from":{"id":42,"is_bot":false,"first_name":"Иван"},"text":"Продам велосипед"}}]}`)
+					return
+				}
+				_, _ = io.WriteString(w, `{"ok":true,"result":[]}`)
+			case "sendMessage":
+				if body["chat_id"] == float64(-100) {
+					mu.Lock()
+					sent = true
+					mu.Unlock()
+				}
+				_, _ = io.WriteString(w, `{"ok":true,"result":{"message_id":7,"date":1,"chat":{"id":-100,"type":"channel"}}}`)
+			default:
+				_, _ = io.WriteString(w, `{"ok":true,"result":true}`)
+			}
+		}))
+		env := testEnv(map[string]string{
+			"BOT_TOKEN": testToken, "CHANNEL_ID": "-100", "BOT_AUTH_ENABLED": "false",
+			"LOG_FILE_PATH": filepath.Join(t.TempDir(), "bot.log"),
+		})
+		ctx, cancel := context.WithCancel(context.Background())
+		var stdout syncBuffer
+		done := make(chan int, 1)
+		go func() { done <- runWith(ctx, env, &stdout, telego.WithAPIServer(srv.URL)) }()
+
+		select {
+		case <-polling:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("прогон %d: получено: getUpdates не вызван за 5 с, ожидался long polling", i)
+		}
+		cancel()
+		close(release)
+		select {
+		case code := <-done:
+			if code != 0 {
+				t.Fatalf("прогон %d: получен код %d, ожидался 0:\n%s", i, code, stdout.String())
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("прогон %d: получено: run не вернулся за 5 с после отмены", i)
+		}
+		srv.Close()
+
+		mu.Lock()
+		if sent {
+			published++
+			if offsets[len(offsets)-1] != 2 {
+				t.Errorf("прогон %d: объявление опубликовано, получены offset %v, ожидался последний 2", i, offsets)
+			}
+		}
+		mu.Unlock()
+	}
+	t.Logf("опубликовано в %d прогонах из 10", published)
+}
