@@ -163,8 +163,10 @@ func (b *Bot) admit(update telego.Update) bool {
 // получает одно сообщение, а накопитель помечается отклонённым и молча
 // отбрасывает остальные элементы, пока не истечёт albumLateWindow.
 // Видео и файлы собираются вместе с фото, чтобы не потерять подпись,
-// но не публикуются. «Будет отправлено» обещается, как только у альбома
-// есть и фото, и подпись.
+// но не публикуются. Как только у альбома есть и фото, и подпись, проверяется
+// длина подписи: слишком длинный альбом сразу отклоняется, иначе автору
+// обещается публикация. При отправке длина проверяется ещё раз: подпись
+// может смениться подписью более позднего элемента.
 func (b *Bot) addAlbumItem(update telego.Update) {
 	msg := update.Message
 	a, ok := b.albums[msg.MediaGroupID]
@@ -172,9 +174,7 @@ func (b *Bot) addAlbumItem(update telego.Update) {
 		a = newAlbum(msg)
 		b.albums[msg.MediaGroupID] = a
 		if !b.admit(update) {
-			a.rejected = true
-			a.state = albumDone
-			a.expiresAt = b.clock().Add(albumLateWindow)
+			b.rejectAlbum(a)
 			return
 		}
 	}
@@ -188,9 +188,21 @@ func (b *Bot) addAlbumItem(update telego.Update) {
 	a.addItem(msg)
 	a.lastItemAt = b.clock()
 	if !a.promised && a.caption != "" && len(a.fileIDs) > 0 {
+		if b.rejectTooLong(a.source(), a.authorID, a.replyToID) {
+			b.rejectAlbum(a)
+			return
+		}
 		a.promised = true
 		b.sendTextMessage(mediaGroupDelayMessage, msg.Chat.ID)
 	}
+}
+
+// rejectAlbum отклоняет альбом, автор уже получил отказ: остальные элементы
+// отбрасываются молча, пока не истечёт albumLateWindow.
+func (b *Bot) rejectAlbum(a *album) {
+	a.rejected = true
+	a.state = albumDone
+	a.expiresAt = b.clock().Add(albumLateWindow)
 }
 
 // rejectLateAlbumItem обрабатывает фото альбома, который уже отправлен:
@@ -245,7 +257,9 @@ func (b *Bot) dispatch(update telego.Update) {
 		}
 	}()
 	if update.Message != nil {
-		if !isCommand(update.Message) {
+		if isCommand(update.Message) {
+			b.handleCommand(update.Message)
+		} else {
 			b.handleUpdate(update)
 		}
 	} else if update.CallbackQuery != nil {
@@ -255,6 +269,25 @@ func (b *Bot) dispatch(update telego.Update) {
 
 func isCommand(msg *telego.Message) bool {
 	return msg.Text != "" && strings.HasPrefix(msg.Text, "/")
+}
+
+// handleCommand отвечает справкой на /start и /help в личном чате
+// (в том числе на «/start параметр» и «/help@имя_бота»); при включённой
+// проверке подписки справка говорит и о ней. Остальные команды и команды
+// вне личного чата пропускаются молча.
+func (b *Bot) handleCommand(msg *telego.Message) {
+	if msg.Chat.Type != telego.ChatTypePrivate {
+		return
+	}
+	name, _, _ := strings.Cut(strings.Fields(msg.Text)[0], "@")
+	if name != "/start" && name != "/help" {
+		return
+	}
+	text := helpMessage
+	if b.authEnabled {
+		text += "\n\n" + helpSubscribersOnlyMessage
+	}
+	b.sendTextMessage(text, msg.Chat.ID)
 }
 
 func (b *Bot) confirmNewAd(chatID int64, replyToID int, sentMsg telego.Message) {

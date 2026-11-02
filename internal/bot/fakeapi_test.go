@@ -44,6 +44,20 @@ type fakeAPI struct {
 	calls   []apiCall
 	fail    map[string]string
 	results map[string]string
+	// drop — методы, на которые сервер обрывает соединение без ответа,
+	// как при сетевом сбое или таймауте (см. dropConn).
+	drop map[string]bool
+}
+
+// dropConn: на метод m сервер будет обрывать соединение, не ответив.
+// Запрос при этом записывается в calls.
+func (f *fakeAPI) dropConn(m string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.drop == nil {
+		f.drop = map[string]bool{}
+	}
+	f.drop[m] = true
 }
 
 // respond задаёт JSON, который фейковый API вернёт в result на метод m.
@@ -80,6 +94,13 @@ func (f *fakeAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	desc, failing := f.fail[method]
 	result, custom := f.results[method]
 	f.mu.Unlock()
+
+	if dropping := func() bool { f.mu.Lock(); defer f.mu.Unlock(); return f.drop[method] }(); dropping {
+		if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+			_ = conn.Close()
+		}
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	if failing {

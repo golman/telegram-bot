@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -63,6 +64,12 @@ func runWith(parent context.Context, getenv func(string) string, stdout io.Write
 		return 1
 	}
 	slog.Info("бот подключён к Telegram", "username", me.Username)
+	// Без прав в канале бот работал бы, но каждый автор получал бы отказ:
+	// ошибка в CHANNEL_ID (например, без -100) видна сразу, а не в жалобах.
+	if err := checkChannel(client, cfg.ChannelID, me.ID); err != nil {
+		slog.Error("бот не может публиковать в канал", "chat_id", cfg.ChannelID, "err", err)
+		return 1
+	}
 
 	// SIGINT/SIGTERM отменяют ctx: telego прекращает long polling и закрывает
 	// канал обновлений, после чего Run дообрабатывает буфер и выходит.
@@ -93,6 +100,26 @@ func runWith(parent context.Context, getenv func(string) string, stdout io.Write
 		return 1
 	}
 	return 0
+}
+
+// errNoPostRight — бот не администратор канала с правом публикации сообщений.
+var errNoPostRight = errors.New("бот не администратор канала с правом «Публикация сообщений»")
+
+// checkChannel проверяет, что бот botID — администратор канала channelID
+// с правом публикации. Ошибка API (канал не найден, бот не в канале)
+// возвращается как есть.
+func checkChannel(client *telego.Bot, channelID, botID int64) error {
+	member, err := client.GetChatMember(context.Background(), &telego.GetChatMemberParams{
+		ChatID: telego.ChatID{ID: channelID},
+		UserID: botID,
+	})
+	if err != nil {
+		return err
+	}
+	if admin, ok := member.(*telego.ChatMemberAdministrator); ok && admin.CanPostMessages {
+		return nil
+	}
+	return errNoPostRight
 }
 
 func main() {

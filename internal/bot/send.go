@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/mymmrac/telego"
+	ta "github.com/mymmrac/telego/telegoapi"
 	tu "github.com/mymmrac/telego/telegoutil"
 
 	"github.com/golman/telegram-bot/internal/post"
@@ -32,13 +33,7 @@ func (b *Bot) sendMediaGroup(a *album) {
 		return
 	}
 
-	src := post.Source{
-		Text:       a.caption,
-		Entities:   a.entities,
-		AuthorID:   a.authorID,
-		AuthorName: a.authorName,
-		Media:      true,
-	}
+	src := a.source()
 	if b.rejectTooLong(src, a.authorID, a.replyToID) {
 		return
 	}
@@ -189,7 +184,15 @@ func (b *Bot) sendMessage(msg *telego.SendMessageParams) error {
 
 // reportPublishError логирует ошибку публикации объявления и сообщает автору
 // в чат chatID понятный текст. Сырой текст ошибки API автору не показывается.
+// Ответ API с ошибкой значит, что пост не вышел. Без него (сетевой сбой,
+// таймаут, пустой ответ) пост мог выйти, и «попробуйте позже» привело бы
+// к дублю, поэтому автор получает просьбу сначала проверить канал.
 func (b *Bot) reportPublishError(err error, chatID int64) {
 	slog.Error("не удалось опубликовать объявление", "chat_id", chatID, "err", err)
-	b.sendTextMessage(publishFailedMessage, chatID)
+	var apiErr *ta.Error
+	if errors.As(err, &apiErr) {
+		b.sendTextMessage(publishFailedMessage, chatID)
+	} else {
+		b.sendTextMessage(publishUncertainMessage, chatID)
+	}
 }

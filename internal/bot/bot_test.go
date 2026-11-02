@@ -395,20 +395,59 @@ func TestRunConfirmsProcessedUpdates(t *testing.T) {
 	}
 }
 
-// TestDispatchIgnoresCommands: текст, начинающийся с «/», — команда; бот её
-// пока молча пропускает и уж точно не публикует в канал.
-func TestDispatchIgnoresCommands(t *testing.T) {
-	for _, text := range []string{"/start", "/help@test_bot", "/ продам"} {
-		t.Run(text, func(t *testing.T) {
+// TestDispatchCommands: текст, начинающийся с «/», — команда, в канал она
+// не публикуется. На /start и /help в личном чате автор получает справку
+// (при включённой проверке подписки — с фразой о ней), остальные команды
+// и команды вне личного чата молча пропускаются.
+func TestDispatchCommands(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		chatType string
+		// auth — включена проверка подписки (BOT_AUTH_ENABLED).
+		auth     bool
+		wantHelp bool
+	}{
+		{"start", "/start", telego.ChatTypePrivate, false, true},
+		{"start с параметром", "/start ref123", telego.ChatTypePrivate, false, true},
+		{"start с переносом строки", "/start\nпривет", telego.ChatTypePrivate, false, true},
+		{"help с именем бота", "/help@test_bot", telego.ChatTypePrivate, false, true},
+		{"start с проверкой подписки", "/start", telego.ChatTypePrivate, true, true},
+		{"неизвестная команда", "/stats", telego.ChatTypePrivate, false, false},
+		{"похоже на start", "/started", telego.ChatTypePrivate, false, false},
+		{"слеш и пробел", "/ продам", telego.ChatTypePrivate, false, false},
+		{"start в группе", "/start", telego.ChatTypeGroup, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			testutil.CaptureLog(t)
 			b, f := newTestBot(t, nil)
 			m := authorMessage(100)
-			m.Text = text
+			m.Text = tt.text
+			m.Chat.Type = tt.chatType
+			b.authEnabled = tt.auth
 
 			b.dispatch(telego.Update{UpdateID: 1, Message: m})
 
-			if calls := f.allCalls(); len(calls) != 0 {
-				t.Errorf("получено запросов к API %d, ожидалось 0: %v", len(calls), calls)
+			if !tt.wantHelp {
+				if calls := f.allCalls(); len(calls) != 0 {
+					t.Errorf("получено запросов к API %d, ожидалось 0: %v", len(calls), calls)
+				}
+				return
+			}
+			calls := f.allCalls()
+			if len(calls) != 1 || calls[0].method != "sendMessage" {
+				t.Fatalf("получены запросы %v, ожидался один sendMessage", calls)
+			}
+			if got := jsonInt(t, calls[0].body, "chat_id"); got != testAuthorID {
+				t.Errorf("получен chat_id %d, ожидался %d", got, testAuthorID)
+			}
+			want := helpMessage
+			if tt.auth {
+				want = helpMessage + "\n\n" + helpSubscribersOnlyMessage
+			}
+			if got := jsonString(t, calls[0].body, "text"); got != want {
+				t.Errorf("получен текст %q, ожидалась справка %q", got, want)
 			}
 		})
 	}

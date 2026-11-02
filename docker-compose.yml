@@ -10,6 +10,13 @@ services:
     # Бот на SIGTERM дожидается конца long polling (до 8 секунд)
     # и публикует накопленные альбомы.
     stop_grace_period: 30s
+    # Ротация stdout контейнера (docker compose logs): у драйвера json-file
+    # по умолчанию её нет, и логи копились бы на хосте без ограничения.
+    logging:
+      driver: local
+      options:
+        max-size: 10m
+        max-file: "3"
     volumes:
       - logs:/app/logs
 

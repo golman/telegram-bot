@@ -313,8 +313,48 @@ func TestPublishErrorHidesAPIText(t *testing.T) {
 	}
 }
 
+// TestPublishUncertain: если ответа Telegram на публикацию нет (оборвалось
+// соединение, таймаут) или он пустой, пост мог выйти в канал. Автор получает
+// не «попробуйте позже», а просьбу сначала проверить канал, иначе повторная
+// отправка дала бы дубль.
+func TestPublishUncertain(t *testing.T) {
+	author := &telego.User{ID: testAuthorID, FirstName: "Иван"}
+	chat := telego.Chat{ID: testAuthorID, Type: "private"}
+	photo := func(b *Bot) {
+		b.sendPhotoMessage(telego.Update{Message: &telego.Message{MessageID: 100, Date: 1, From: author, Chat: chat,
+			Caption: "Продам", Photo: []telego.PhotoSize{{FileID: "p1"}}}})
+	}
+	sendAlbum := func(b *Bot) { b.sendMediaGroup(pendingAlbum(albumCollecting)) }
+	tests := []struct {
+		name  string
+		setup func(f *fakeAPI)
+		send  func(b *Bot)
+	}{
+		{"одно фото: обрыв соединения", func(f *fakeAPI) { f.dropConn("sendPhoto") }, photo},
+		{"альбом: обрыв соединения", func(f *fakeAPI) { f.dropConn("sendMediaGroup") }, sendAlbum},
+		{"одно фото: пустой ответ", func(f *fakeAPI) { f.respond("sendPhoto", "null") }, photo},
+		{"альбом: пустой ответ", func(f *fakeAPI) { f.respond("sendMediaGroup", "[]") }, sendAlbum},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := testutil.CaptureLog(t)
+			b, f := newTestBot(t, nil)
+			tt.setup(f)
+
+			tt.send(b)
+
+			if got, want := authorTexts(t, f), []string{publishUncertainMessage}; !reflect.DeepEqual(got, want) {
+				t.Errorf("получены тексты автору %q, ожидались %q", got, want)
+			}
+			if !strings.Contains(logs.String(), `level=ERROR msg="не удалось опубликовать объявление"`) {
+				t.Errorf("получено без записи об ошибке публикации, ожидалась:\n%s", logs.String())
+			}
+		})
+	}
+}
+
 // TestEmptySendMessageResponse: если Bot API ответил на sendMessage пустым
-// результатом, бот не паникует, а сообщает автору о неудаче без кнопки.
+// результатом, бот не паникует, а сообщает автору, что пост мог выйти, без кнопки.
 func TestEmptySendMessageResponse(t *testing.T) {
 	logs := testutil.CaptureLog(t)
 	b, f := newTestBot(t, nil)
@@ -327,7 +367,7 @@ func TestEmptySendMessageResponse(t *testing.T) {
 	if out := logs.String(); !strings.Contains(out, "пустой ответ на sendMessage") {
 		t.Errorf("получено без ошибки о пустом ответе, ожидалась:\n%s", out)
 	}
-	if got, want := authorTexts(t, f), []string{publishFailedMessage}; !reflect.DeepEqual(got, want) {
+	if got, want := authorTexts(t, f), []string{publishUncertainMessage}; !reflect.DeepEqual(got, want) {
 		t.Errorf("получены тексты автору %q, ожидались %q", got, want)
 	}
 }

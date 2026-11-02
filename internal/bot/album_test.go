@@ -3,6 +3,7 @@ package bot
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -457,5 +458,35 @@ func TestLateItemOfUnpublishedAlbum(t *testing.T) {
 				t.Errorf("получены тексты автору %q, ожидались %q", got, tt.wantTexts)
 			}
 		})
+	}
+}
+
+// TestAlbumCaptionTooLong: длина подписи проверяется, как только у альбома
+// есть фото и подпись. Автор сразу получает только «слишком длинное» — без
+// обещания «будет опубликован», альбом не публикуется, а остальные фото
+// пропускаются молча.
+func TestAlbumCaptionTooLong(t *testing.T) {
+	testutil.CaptureLog(t)
+	b, f := newTestBot(t, nil)
+	b.albums = map[string]*album{}
+	clock := useFakeClock(b)
+	n := post.TextLimit(post.Source{AuthorID: testAuthorID, AuthorName: "Иван", Media: true})
+
+	b.handleUpdate(telego.Update{Message: albumItem(100, "p1", "", nil)})
+	b.handleUpdate(telego.Update{Message: albumItem(101, "p2", strings.Repeat("я", n+1), nil)})
+	if got, want := authorTexts(t, f), []string{postTooLongText(1)}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("сразу после подписи автору ушли %q, ожидалось %q", got, want)
+	}
+	if got := jsonInt(t, jsonField[map[string]any](t, f.byMethod("sendMessage")[0].body, "reply_parameters"), "message_id"); got != 101 {
+		t.Errorf("предупреждение отвечает на сообщение %d, ожидалось 101 (с подписью)", got)
+	}
+
+	b.handleUpdate(telego.Update{Message: albumItem(102, "p3", "", nil)})
+	clock.wait(b, albumQuietPeriod)
+	if got := channelCalls(t, f, "sendMediaGroup"); got != 0 {
+		t.Errorf("sendMediaGroup в канал вызван %d раз, длинный альбом публиковаться не должен", got)
+	}
+	if got := authorTexts(t, f); len(got) != 1 {
+		t.Errorf("автору ушли %q, ожидалось одно предупреждение о длине", got)
 	}
 }

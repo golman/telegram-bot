@@ -25,6 +25,13 @@ import (
 // testToken — фейковый токен; в логах он встречаться не должен.
 const testToken = "123456:SECRETSECRETSECRETSECRETSECRETSECRE"
 
+// botAdminResponse — ответ getChatMember: бот (id 1) — администратор канала
+// с правом публикации, run пропускает его в long polling.
+const botAdminResponse = `{"ok":true,"result":{"status":"administrator","user":{"id":1,"is_bot":true,"first_name":"Бот"},` +
+	`"can_be_edited":false,"is_anonymous":false,"can_manage_chat":true,"can_delete_messages":false,` +
+	`"can_manage_video_chats":false,"can_restrict_members":false,"can_promote_members":false,"can_change_info":false,` +
+	`"can_invite_users":false,"can_post_stories":false,"can_edit_stories":false,"can_delete_stories":false,"can_post_messages":true}}`
+
 // Записи, которые пишет run при ошибках конфига.
 var (
 	logSetUp       = regexp.MustCompile(`(?m)^time=\S+Z level=INFO msg="логирование настроено".* log_level=INFO`)
@@ -272,6 +279,8 @@ func (a *runAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "getMe":
 		_, _ = io.WriteString(w, `{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"Бот","username":"test_bot"}}`)
+	case "getChatMember":
+		_, _ = io.WriteString(w, botAdminResponse)
 	case "sendMessage":
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -350,6 +359,79 @@ func TestRunFailsOnBadToken(t *testing.T) {
 	}
 }
 
+// TestRunFailsOnChannelCheck: если бот не может публиковать в CHANNEL_ID
+// (канал не найден, бот не администратор или без права публикации), run
+// сразу возвращает 1 с понятной записью и не уходит в long polling: иначе
+// бот работал бы, а каждый автор получал бы «Не удалось проверить подписку».
+func TestRunFailsOnChannelCheck(t *testing.T) {
+	tests := []struct {
+		name     string
+		response string
+	}{
+		{"канал не найден", `{"ok":false,"error_code":400,"description":"Bad Request: chat not found"}`},
+		{"бот не администратор", `{"ok":true,"result":{"status":"member","user":{"id":1,"is_bot":true,"first_name":"Бот"}}}`},
+		{"администратор без права публикации", strings.Replace(botAdminResponse, `"can_post_messages":true`, `"can_post_messages":false`, 1)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.CaptureLog(t)
+			var mu sync.Mutex
+			var methods []string
+			var memberReq map[string]any
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				m := path.Base(r.URL.Path)
+				var body map[string]any
+				_ = json.NewDecoder(r.Body).Decode(&body)
+				mu.Lock()
+				methods = append(methods, m)
+				if m == "getChatMember" {
+					memberReq = body
+				}
+				mu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				switch m {
+				case "getMe":
+					_, _ = io.WriteString(w, `{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"Бот","username":"test_bot"}}`)
+				default:
+					_, _ = io.WriteString(w, tt.response)
+				}
+			}))
+			t.Cleanup(srv.Close)
+			env := testEnv(map[string]string{
+				"BOT_TOKEN":     testToken,
+				"CHANNEL_ID":    "-100",
+				"LOG_FILE_PATH": filepath.Join(t.TempDir(), "bot.log"),
+			})
+
+			var stdout syncBuffer
+			done := make(chan int, 1)
+			go func() { done <- runWith(context.Background(), env, &stdout, telego.WithAPIServer(srv.URL)) }()
+			select {
+			case code := <-done:
+				if code != 1 {
+					t.Errorf("получен код %d, ожидался 1", code)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("получено: run не вернулся за 5 с, ожидался немедленный выход с кодом 1")
+			}
+
+			out := stdout.String()
+			if !regexp.MustCompile(`(?m)^time=\S+Z level=ERROR msg="бот не может публиковать в канал" chat_id=-100 err=`).MatchString(out) {
+				t.Errorf("получено без записи о канале, ожидалась запись:\n%s", out)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if !reflect.DeepEqual(methods, []string{"getMe", "getChatMember"}) {
+				t.Errorf("получены запросы %v, ожидались getMe и getChatMember", methods)
+			}
+			// Проверяется сам бот (id из getMe) в канале CHANNEL_ID.
+			if memberReq["chat_id"] != float64(-100) || memberReq["user_id"] != float64(1) {
+				t.Errorf("получен getChatMember %v, ожидались chat_id -100 и user_id 1", memberReq)
+			}
+		})
+	}
+}
+
 // TestRunConfirmsLastBatch: сигнал остановки пришёл, пока getUpdates нёс
 // объявление (fasthttp не прерывает запрос по отмене ctx). Если telego успел
 // отдать обновление боту и оно опубликовано, Telegram должен получить
@@ -376,6 +458,8 @@ func TestRunConfirmsLastBatch(t *testing.T) {
 			switch path.Base(r.URL.Path) {
 			case "getMe":
 				_, _ = io.WriteString(w, `{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"Бот","username":"test_bot"}}`)
+			case "getChatMember":
+				_, _ = io.WriteString(w, botAdminResponse)
 			case "getUpdates":
 				mu.Lock()
 				polls++

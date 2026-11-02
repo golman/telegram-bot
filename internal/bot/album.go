@@ -70,6 +70,17 @@ func newAlbum(msg *telego.Message) *album {
 	return a
 }
 
+// source — данные поста из подписи альбома.
+func (a *album) source() post.Source {
+	return post.Source{
+		Text:       a.caption,
+		Entities:   a.entities,
+		AuthorID:   a.authorID,
+		AuthorName: a.authorName,
+		Media:      true,
+	}
+}
+
 // addItem добавляет элемент альбома: самый большой размер фото и, если у элемента
 // есть подпись, её текст, entities и ID сообщения, на которое ответит подтверждение.
 // Элемент без фото (видео, файл) только считается в skipped, но его подпись берётся.
