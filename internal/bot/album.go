@@ -28,8 +28,6 @@ type album struct {
 	published bool
 	// skipped — сколько элементов альбома не фото (видео, файлы); они не публикуются.
 	skipped int
-	// rejected — автор не прошёл проверку подписки или фильтры, элементы отбрасываются.
-	rejected bool
 	// promised — автору уже отправлено mediaGroupDelayMessage.
 	promised bool
 }
@@ -40,7 +38,7 @@ const (
 	// albumCollecting — альбом собирается и ждёт albumQuietPeriod тишины.
 	albumCollecting albumState = iota
 	// albumDone — альбом отправлен (или отклонён) и хранится до
-	// expiresAt, чтобы опоздавшие фото не создали новый альбом.
+	// expiresAt, чтобы опоздавшие фото не создали новый альбом (см. closeAlbum).
 	albumDone
 )
 

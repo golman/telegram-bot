@@ -125,8 +125,7 @@ func (b *Bot) flushMediaGroups() {
 // помечается отправленным до отправки, чтобы после паники она не повторялась
 // на каждом шаге тикера.
 func (b *Bot) publishAlbum(id string, a *album) {
-	a.state = albumDone
-	a.expiresAt = b.clock().Add(albumLateWindow)
+	b.closeAlbum(a)
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("паника при отправке альбома", "media_group_id", id, "user_id", a.authorID,
@@ -155,8 +154,8 @@ func (b *Bot) admit(msg *telego.Message) bool {
 
 // addAlbumItem добавляет элемент альбома в накопитель. Подписка
 // проверяется один раз, на первом пришедшем элементе: при отказе автор
-// получает одно сообщение, а накопитель помечается отклонённым и молча
-// отбрасывает остальные элементы, пока не истечёт albumLateWindow.
+// получает одно сообщение, альбом закрывается без публикации, и остальные
+// элементы до конца albumLateWindow молча пропускает rejectLateAlbumItem.
 // Видео и файлы собираются вместе с фото, чтобы не потерять подпись,
 // но не публикуются. Как только у альбома есть и фото, и подпись, проверяется
 // длина подписи: слишком длинный альбом сразу отклоняется, иначе автору
@@ -168,12 +167,9 @@ func (b *Bot) addAlbumItem(msg *telego.Message) {
 		a = newAlbum(msg)
 		b.albums[msg.MediaGroupID] = a
 		if !b.admit(msg) {
-			b.rejectAlbum(a)
+			b.closeAlbum(a)
 			return
 		}
-	}
-	if a.rejected {
-		return
 	}
 	if a.state == albumDone {
 		b.rejectLateAlbumItem(a, msg)
@@ -183,7 +179,7 @@ func (b *Bot) addAlbumItem(msg *telego.Message) {
 	a.lastItemAt = b.clock()
 	if !a.promised && a.caption != "" && len(a.fileIDs) > 0 {
 		if b.rejectTooLong(a.source(), a.authorID, a.replyToID) {
-			b.rejectAlbum(a)
+			b.closeAlbum(a)
 			return
 		}
 		a.promised = true
@@ -191,10 +187,10 @@ func (b *Bot) addAlbumItem(msg *telego.Message) {
 	}
 }
 
-// rejectAlbum отклоняет альбом, автор уже получил отказ: остальные элементы
-// отбрасываются молча, пока не истечёт albumLateWindow.
-func (b *Bot) rejectAlbum(a *album) {
-	a.rejected = true
+// closeAlbum переводит альбом в albumDone — после отправки или отказа.
+// Он больше не публикуется, а до expiresAt ловит опоздавшие фото
+// (rejectLateAlbumItem), чтобы они не создали новый альбом.
+func (b *Bot) closeAlbum(a *album) {
 	a.state = albumDone
 	a.expiresAt = b.clock().Add(albumLateWindow)
 }
