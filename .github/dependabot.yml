@@ -1,4 +1,8 @@
 version: 2
+
+# Префикс заголовка — с двоеточием: Dependabot сам ставит его только после
+# латинской буквы или цифры, а после «зависимости» получалось «зависимости Bump …».
+# Пробел после префикса он добавляет сам.
 updates:
   # Go-модули: все обновления одной PR в неделю, чтобы не плодить по PR на каждую
   # транзитивную зависимость.
@@ -7,7 +11,7 @@ updates:
     schedule:
       interval: weekly
     commit-message:
-      prefix: "зависимости"
+      prefix: "зависимости:"
     groups:
       go:
         patterns: ["*"]
@@ -18,15 +22,19 @@ updates:
     schedule:
       interval: weekly
     commit-message:
-      prefix: "зависимости"
+      prefix: "зависимости:"
     groups:
       actions:
         patterns: ["*"]
 
-  # Базовые образы в Dockerfile (закреплены по digest).
+  # Базовые образы в Dockerfile (закреплены по digest): оба образа одной PR,
+  # как и у остальных экосистем.
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
     commit-message:
-      prefix: "зависимости"
+      prefix: "зависимости:"
+    groups:
+      docker:
+        patterns: ["*"]
