@@ -59,8 +59,25 @@ jobs:
       - name: staticcheck
         run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
 
+      # Уязвимости стандартной библиотеки исправляются в новых версиях Go,
+      # поэтому проверять их имеет смысл только на stable.
       - name: govulncheck
+        if: matrix.go == 'stable'
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
       - name: Сборка
         run: go build ./...
+
+  docker:
+    name: Сборка Docker-образа
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Только сборка, без push: ловит Dockerfile, который не собирается,
+      # например когда код лежит в каталоге, не скопированном в образ.
+      - name: docker build
+        run: docker build .

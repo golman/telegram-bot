@@ -54,6 +54,7 @@
 - [x] **CI на GitHub Actions.** `gofmt`, `go vet`, `go test -race`, staticcheck, govulncheck; добавить `.github/dependabot.yml`.
 - [x] **Dockerfile и docker-compose.** Multi-stage, distroless, `restart: unless-stopped`, volume для логов.
 - [ ] **README и `.env.example`.** Что делает бот, как настроить права в канале, переменные окружения, запуск.
+- [x] **CI не собирает Docker-образ.** Dockerfile копирует только `cmd` и `internal`: новый каталог с кодом или сломанный шаг сборки обнаружились бы только при деплое. В CI добавлена задача `docker` с `docker build .`, а govulncheck запускается только на `stable`: на минимальной версии Go он ничего не добавляет.
 - [x] **Ротация логов Docker.** У драйвера `json-file` по умолчанию нет `max-size`: stdout контейнера копится на хосте без ограничения, хотя те же логи уже пишутся в файл с ротацией. В `docker-compose.yml` задан драйвер `local` с ротацией.
 
 ## Качество кода
