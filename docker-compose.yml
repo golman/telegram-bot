@@ -2,7 +2,7 @@ services:
   bot:
     build: .
     image: telegram-bot
-    # BOT_TOKEN, CHANNEL_ID и остальные переменные окружения (см. CLAUDE.md).
+    # BOT_TOKEN, CHANNEL_ID и остальные переменные окружения: пример — .env.example, описание — README.md.
     env_file: .env
     # Перезапуск после падения и после перезагрузки хоста, но не после
     # ручного docker compose stop.
