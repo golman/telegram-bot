@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -70,6 +71,19 @@ func runWith(parent context.Context, getenv func(string) string, stdout io.Write
 		slog.Error("бот не может публиковать в канал", "chat_id", cfg.ChannelID, "err", err)
 		return 1
 	}
+	// Пока настроен webhook, getUpdates отвечает 409, и бот работал бы,
+	// не получая обновлений. Сам он webhook не снимает: тот может быть
+	// нужен другому деплою, решает человек (подсказка в записи и в README).
+	webhook, err := client.GetWebhookInfo(context.Background())
+	if err != nil {
+		slog.Error("не удалось проверить webhook", "err", err)
+		return 1
+	}
+	if webhook.URL != "" {
+		slog.Error("у бота настроен webhook, обновления через long polling не придут",
+			"webhook_host", webhookHost(webhook.URL), "pending_update_count", webhook.PendingUpdateCount, "fix", webhookFix)
+		return 1
+	}
 
 	// SIGINT/SIGTERM отменяют ctx: telego прекращает long polling и закрывает
 	// канал обновлений, после чего Run дообрабатывает буфер и выходит.
@@ -120,6 +134,20 @@ func checkChannel(client *telego.Bot, channelID, botID int64) error {
 		return nil
 	}
 	return errNoPostRight
+}
+
+// webhookFix — подсказка в записи о настроенном webhook. Токена в ней нет:
+// команда берёт его из переменной окружения.
+const webhookFix = `снимите webhook: curl -s "https://api.telegram.org/bot$BOT_TOKEN/deleteWebhook", подробности — в README, «Проверка и типичные сбои»`
+
+// webhookHost возвращает хост адреса webhook для лога: путь может быть
+// секретным, поэтому целиком адрес не пишется.
+func webhookHost(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "?"
+	}
+	return u.Host
 }
 
 func main() {

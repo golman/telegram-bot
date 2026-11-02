@@ -281,6 +281,8 @@ func (a *runAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"Бот","username":"test_bot"}}`)
 	case "getChatMember":
 		_, _ = io.WriteString(w, botAdminResponse)
+	case "getWebhookInfo":
+		_, _ = io.WriteString(w, noWebhookResponse)
 	case "sendMessage":
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -356,6 +358,89 @@ func TestRunFailsOnBadToken(t *testing.T) {
 	defer mu.Unlock()
 	if !reflect.DeepEqual(methods, []string{"getMe"}) {
 		t.Errorf("получены запросы %v, ожидался только getMe", methods)
+	}
+}
+
+// noWebhookResponse — ответ getWebhookInfo, когда webhook не настроен
+// и бот может получать обновления через long polling.
+const noWebhookResponse = `{"ok":true,"result":{"url":"","has_custom_certificate":false,"pending_update_count":0}}`
+
+// TestRunFailsOnWebhook: пока у бота настроен webhook, getUpdates отвечает
+// 409, и бот без этой проверки работал бы, не получая обновлений. run сразу
+// возвращает 1 с записью и подсказкой, как снять webhook, и не уходит
+// в long polling. Путь webhook может быть секретным: в лог идёт только хост.
+// Если сам getWebhookInfo не удался, это тоже код 1.
+func TestRunFailsOnWebhook(t *testing.T) {
+	tests := []struct {
+		name     string
+		response string
+		want     *regexp.Regexp
+	}{
+		{
+			"webhook настроен",
+			`{"ok":true,"result":{"url":"https://example.com/hook/WEBHOOKPATH","has_custom_certificate":false,"pending_update_count":3}}`,
+			regexp.MustCompile(`(?m)^time=\S+Z level=ERROR msg="у бота настроен webhook, обновления через long polling не придут" webhook_host=example\.com pending_update_count=3 fix=".*deleteWebhook.*README`),
+		},
+		{
+			"getWebhookInfo не удался",
+			`{"ok":false,"error_code":400,"description":"Bad Request: something"}`,
+			regexp.MustCompile(`(?m)^time=\S+Z level=ERROR msg="не удалось проверить webhook" err=`),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testutil.CaptureLog(t)
+			var mu sync.Mutex
+			var methods []string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				m := path.Base(r.URL.Path)
+				mu.Lock()
+				methods = append(methods, m)
+				mu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				switch m {
+				case "getMe":
+					_, _ = io.WriteString(w, `{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"Бот","username":"test_bot"}}`)
+				case "getChatMember":
+					_, _ = io.WriteString(w, botAdminResponse)
+				default:
+					_, _ = io.WriteString(w, tt.response)
+				}
+			}))
+			t.Cleanup(srv.Close)
+			env := testEnv(map[string]string{
+				"BOT_TOKEN":     testToken,
+				"CHANNEL_ID":    "-100",
+				"LOG_FILE_PATH": filepath.Join(t.TempDir(), "bot.log"),
+			})
+
+			var stdout syncBuffer
+			done := make(chan int, 1)
+			go func() { done <- runWith(context.Background(), env, &stdout, telego.WithAPIServer(srv.URL)) }()
+			select {
+			case code := <-done:
+				if code != 1 {
+					t.Errorf("получен код %d, ожидался 1", code)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("получено: run не вернулся за 5 с, ожидался немедленный выход с кодом 1")
+			}
+
+			out := stdout.String()
+			if !tt.want.MatchString(out) {
+				t.Errorf("получено без записи %s, ожидалась запись:\n%s", tt.want, out)
+			}
+			for _, secret := range []string{"SECRET", "WEBHOOKPATH"} {
+				if strings.Contains(out, secret) {
+					t.Errorf("получено %q в логе, ожидалось его отсутствие:\n%s", secret, out)
+				}
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if !reflect.DeepEqual(methods, []string{"getMe", "getChatMember", "getWebhookInfo"}) {
+				t.Errorf("получены запросы %v, ожидались getMe, getChatMember и getWebhookInfo", methods)
+			}
+		})
 	}
 }
 
@@ -460,6 +545,8 @@ func TestRunConfirmsLastBatch(t *testing.T) {
 				_, _ = io.WriteString(w, `{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"Бот","username":"test_bot"}}`)
 			case "getChatMember":
 				_, _ = io.WriteString(w, botAdminResponse)
+			case "getWebhookInfo":
+				_, _ = io.WriteString(w, noWebhookResponse)
 			case "getUpdates":
 				mu.Lock()
 				polls++
