@@ -12,15 +12,11 @@ import (
 	"github.com/golman/telegram-bot/internal/post"
 )
 
-// errEmptyMediaGroupResponse — Bot API ответил на sendMediaGroup без сообщений,
+// errEmptyResponse — Bot API ответил на метод публикации method без сообщения,
 // и ID поста для кнопки «Не актуально» взять неоткуда.
-var errEmptyMediaGroupResponse = errors.New("пустой ответ на sendMediaGroup")
-
-// errEmptyPhotoResponse — Bot API ответил на sendPhoto без сообщения.
-var errEmptyPhotoResponse = errors.New("пустой ответ на sendPhoto")
-
-// errEmptyMessageResponse — Bot API ответил на sendMessage без сообщения.
-var errEmptyMessageResponse = errors.New("пустой ответ на sendMessage")
+func errEmptyResponse(method string) error {
+	return errors.New("пустой ответ на " + method)
+}
 
 func (b *Bot) sendMediaGroup(a *album) {
 	if len(a.fileIDs) == 0 {
@@ -29,7 +25,7 @@ func (b *Bot) sendMediaGroup(a *album) {
 		return
 	}
 	if a.caption == "" {
-		b.sayNoCaption(a.authorID)
+		b.sendTextMessage(noCaptionMessage, a.authorID)
 		return
 	}
 
@@ -60,7 +56,7 @@ func (b *Bot) sendMediaGroup(a *album) {
 
 	sentMsg, err := b.client.SendMediaGroup(context.Background(), &mgc)
 	if err == nil && len(sentMsg) == 0 {
-		err = errEmptyMediaGroupResponse
+		err = errEmptyResponse("sendMediaGroup")
 	}
 	if err != nil {
 		b.reportPublishError(err, a.authorID)
@@ -77,17 +73,17 @@ func (b *Bot) sendMediaGroup(a *album) {
 // sendPhotoMessage публикует одиночное фото с подписью. Пост собирается
 // той же post.FromMessage, что и при нажатии кнопки, поэтому
 // публикация и пометка «Не актуально» берут текст одинаково.
-func (b *Bot) sendPhotoMessage(update telego.Update) {
-	src, ok := post.FromMessage(update.Message)
+func (b *Bot) sendPhotoMessage(m *telego.Message) {
+	src, ok := post.FromMessage(m)
 	if !ok {
-		b.sayNoCaption(update.Message.Chat.ID)
+		b.sendTextMessage(noCaptionMessage, m.Chat.ID)
 		return
 	}
 
 	// Получение фотографии с наибольшим размером
-	photo := (update.Message.Photo)[len(update.Message.Photo)-1]
+	photo := m.Photo[len(m.Photo)-1]
 
-	if b.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {
+	if b.rejectTooLong(src, m.Chat.ID, m.MessageID) {
 		return
 	}
 	text, ents := post.Build(src, false)
@@ -100,27 +96,21 @@ func (b *Bot) sendPhotoMessage(update telego.Update) {
 
 	sent, err := b.client.SendPhoto(context.Background(), &msg)
 	if err == nil && sent == nil {
-		err = errEmptyPhotoResponse
+		err = errEmptyResponse("sendPhoto")
 	}
 	if err != nil {
-		b.reportPublishError(err, update.Message.Chat.ID)
+		b.reportPublishError(err, m.Chat.ID)
 		return
 	}
-	b.confirmNewAd(update.Message.From.ID, update.Message.MessageID, *sent)
+	b.confirmNewAd(m.From.ID, m.MessageID, *sent)
 }
 
 // sendPlainMessage публикует текстовое объявление; пост собирается
-// post.FromMessage, как и в sendPhotoMessage.
-func (b *Bot) sendPlainMessage(update telego.Update) {
-	src, ok := post.FromMessage(update.Message)
-	if !ok {
-		// handleUpdate не пропускает сообщения без текста и без автора,
-		// так что сюда попасть не должно; отвечать автору здесь нечего.
-		slog.Warn("сообщение без текста или автора, не опубликовано",
-			"chat_id", update.Message.Chat.ID, "message_id", update.Message.MessageID)
-		return
-	}
-	if b.rejectTooLong(src, update.Message.Chat.ID, update.Message.MessageID) {
+// post.FromMessage, как и в sendPhotoMessage. handleUpdate пропускает сюда
+// только сообщения с автором и текстом, поэтому Source всегда есть.
+func (b *Bot) sendPlainMessage(m *telego.Message) {
+	src, _ := post.FromMessage(m)
+	if b.rejectTooLong(src, m.Chat.ID, m.MessageID) {
 		return
 	}
 	text, ents := post.Build(src, false)
@@ -131,18 +121,13 @@ func (b *Bot) sendPlainMessage(update telego.Update) {
 	}
 	sentMsg, err := b.client.SendMessage(context.Background(), emsg)
 	if err == nil && sentMsg == nil {
-		err = errEmptyMessageResponse
+		err = errEmptyResponse("sendMessage")
 	}
 	if err != nil {
-		b.reportPublishError(err, update.Message.Chat.ID)
+		b.reportPublishError(err, m.Chat.ID)
 	} else {
-		b.confirmNewAd(update.Message.From.ID, update.Message.MessageID, *sentMsg)
+		b.confirmNewAd(m.From.ID, m.MessageID, *sentMsg)
 	}
-}
-
-// sayNoCaption отвечает автору, что у фото или альбома нет подписи.
-func (b *Bot) sayNoCaption(chatID int64) {
-	b.sendTextMessage(noCaptionMessage, chatID)
 }
 
 // rejectTooLong проверяет, уместится ли пост из src в лимит Telegram.

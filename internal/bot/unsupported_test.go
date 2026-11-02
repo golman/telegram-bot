@@ -152,6 +152,8 @@ func TestHandleUpdateOnlyPrivateChats(t *testing.T) {
 		// Положительный ID ещё не значит личный чат.
 		{"группа с положительным ID", func(m *telego.Message) { m.Chat.Type = telego.ChatTypeGroup }, false},
 		{"без автора", func(m *telego.Message) { m.From = nil }, false},
+		// newAlbum разыменовывает From без проверки: отсечь должен handleUpdate.
+		{"элемент альбома без автора", func(m *telego.Message) { m.From = nil; m.MediaGroupID = "album" }, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

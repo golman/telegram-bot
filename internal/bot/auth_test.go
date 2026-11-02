@@ -74,7 +74,7 @@ func TestHandleUpdateAuth(t *testing.T) {
 			want:           published,
 		},
 	}
-	serviceTexts := []string{authCheckFailedMessage, notSubscribedMessage, filtersFailedMessage}
+	serviceTexts := []string{authCheckFailedMessage, notSubscribedMessage}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			logs := testutil.CaptureLog(t)

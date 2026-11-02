@@ -10,12 +10,12 @@ import (
 // authByChannel проверяет, что автор сообщения состоит в канале.
 // Ошибка возвращается, если Telegram не ответил на GetChatMember:
 // в этом случае подписка неизвестна, а не отсутствует.
-func (b *Bot) authByChannel(update telego.Update) (bool, error) {
+func (b *Bot) authByChannel(msg *telego.Message) (bool, error) {
 	if !b.authEnabled {
 		return true, nil
 	}
 	cmc := telego.GetChatMemberParams{}
-	cmc.UserID = update.Message.From.ID
+	cmc.UserID = msg.From.ID
 	cmc.ChatID = telego.ChatID{ID: b.channelID}
 	cm, err := b.client.GetChatMember(context.Background(), &cmc)
 

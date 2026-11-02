@@ -31,26 +31,6 @@ func TestPhotoWithoutCaption(t *testing.T) {
 	}
 }
 
-// TestPlainMessageWithoutSource: если текстовое сообщение дошло до
-// sendPlainMessage без текста или автора (handleUpdate такого не пропускает),
-// оно не публикуется, автору не уходит текст про фото, а в логе есть запись.
-func TestPlainMessageWithoutSource(t *testing.T) {
-	logs := testutil.CaptureLog(t)
-	b, f := newTestBot(t, nil)
-	m := authorMessage(100)
-	m.From = nil
-	m.Text = "Продам"
-
-	b.sendPlainMessage(telego.Update{Message: m})
-
-	if calls := f.allCalls(); len(calls) != 0 {
-		t.Errorf("получено запросов к API %d, ожидалось 0: %v", len(calls), calls)
-	}
-	if out := logs.String(); !strings.Contains(out, `msg="сообщение без текста или автора, не опубликовано"`) {
-		t.Errorf("получено без записи о пропущенном сообщении, ожидалась запись:\n%s", out)
-	}
-}
-
 // TestSinglePhotoViaSendPhoto: одиночное фото публикуется одним sendPhoto
 // (самый большой размер, подпись с припиской автора), а кнопка
 // подтверждения ведёт на пост из ответа sendPhoto.
@@ -61,7 +41,7 @@ func TestSinglePhotoViaSendPhoto(t *testing.T) {
 	m.Photo = []telego.PhotoSize{{FileID: "p-small"}, {FileID: "p-big"}}
 	m.Caption = "Продам"
 
-	b.sendPhotoMessage(telego.Update{Message: m})
+	b.sendPhotoMessage(m)
 
 	if n := len(f.byMethod("sendMediaGroup")); n != 0 {
 		t.Errorf("получено sendMediaGroup %d раз, ожидалось 0", n)
@@ -107,7 +87,7 @@ func TestEmptySendResponse(t *testing.T) {
 		send                 func(b *Bot)
 	}{
 		{"альбом", "sendMediaGroup", "[]", func(b *Bot) { b.sendMediaGroup(pendingAlbum(albumCollecting)) }},
-		{"одно фото", "sendPhoto", "null", func(b *Bot) { b.sendPhotoMessage(telego.Update{Message: photo}) }},
+		{"одно фото", "sendPhoto", "null", func(b *Bot) { b.sendPhotoMessage(photo) }},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -144,19 +124,19 @@ func TestPostTooLong(t *testing.T) {
 	}
 	plain := func(text string) func(b *Bot) {
 		return func(b *Bot) {
-			b.sendPlainMessage(telego.Update{Message: &telego.Message{
+			b.sendPlainMessage(&telego.Message{
 				MessageID: 100, Date: 1, From: author, Text: text,
 				Chat: telego.Chat{ID: testAuthorID, Type: "private"},
-			}})
+			})
 		}
 	}
 	photo := func(text string) func(b *Bot) {
 		return func(b *Bot) {
-			b.sendPhotoMessage(telego.Update{Message: &telego.Message{
+			b.sendPhotoMessage(&telego.Message{
 				MessageID: 100, Date: 1, From: author, Caption: text,
 				Photo: []telego.PhotoSize{{FileID: "p1"}},
 				Chat:  telego.Chat{ID: testAuthorID, Type: "private"},
-			}})
+			})
 		}
 	}
 	sendAlbum := func(text string) func(b *Bot) {
@@ -252,15 +232,15 @@ func TestPublishErrorHidesAPIText(t *testing.T) {
 		{
 			name: "текст", method: "sendMessage",
 			send: func(b *Bot) {
-				b.sendPlainMessage(telego.Update{Message: &telego.Message{MessageID: 100, Date: 1, From: author, Chat: chat, Text: "Продам"}})
+				b.sendPlainMessage(&telego.Message{MessageID: 100, Date: 1, From: author, Chat: chat, Text: "Продам"})
 			},
 			wantTexts: []string{publishFailedMessage},
 		},
 		{
 			name: "одно фото", method: "sendPhoto",
 			send: func(b *Bot) {
-				b.sendPhotoMessage(telego.Update{Message: &telego.Message{MessageID: 100, Date: 1, From: author, Chat: chat,
-					Caption: "Продам", Photo: []telego.PhotoSize{{FileID: "p1"}}}})
+				b.sendPhotoMessage(&telego.Message{MessageID: 100, Date: 1, From: author, Chat: chat,
+					Caption: "Продам", Photo: []telego.PhotoSize{{FileID: "p1"}}})
 			},
 			wantTexts: []string{publishFailedMessage},
 		},
@@ -321,8 +301,8 @@ func TestPublishUncertain(t *testing.T) {
 	author := &telego.User{ID: testAuthorID, FirstName: "Иван"}
 	chat := telego.Chat{ID: testAuthorID, Type: "private"}
 	photo := func(b *Bot) {
-		b.sendPhotoMessage(telego.Update{Message: &telego.Message{MessageID: 100, Date: 1, From: author, Chat: chat,
-			Caption: "Продам", Photo: []telego.PhotoSize{{FileID: "p1"}}}})
+		b.sendPhotoMessage(&telego.Message{MessageID: 100, Date: 1, From: author, Chat: chat,
+			Caption: "Продам", Photo: []telego.PhotoSize{{FileID: "p1"}}})
 	}
 	sendAlbum := func(b *Bot) { b.sendMediaGroup(pendingAlbum(albumCollecting)) }
 	tests := []struct {
@@ -362,7 +342,7 @@ func TestEmptySendMessageResponse(t *testing.T) {
 	m := authorMessage(100)
 	m.Text = "Продам"
 
-	b.sendPlainMessage(telego.Update{Message: m})
+	b.sendPlainMessage(m)
 
 	if out := logs.String(); !strings.Contains(out, "пустой ответ на sendMessage") {
 		t.Errorf("получено без ошибки о пустом ответе, ожидалась:\n%s", out)

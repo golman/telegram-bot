@@ -58,16 +58,13 @@ const (
 // newAlbum создаёт накопитель альбома по первому полученному элементу.
 // Фото и подпись сюда не попадают: их добавляет addItem.
 func newAlbum(msg *telego.Message) *album {
-	a := &album{
-		fileIDs:   []string{},
-		state:     albumCollecting,
-		replyToID: msg.MessageID,
+	return &album{
+		fileIDs:    []string{},
+		state:      albumCollecting,
+		replyToID:  msg.MessageID,
+		authorName: post.DisplayName(*msg.From),
+		authorID:   msg.From.ID,
 	}
-	if msg.From != nil {
-		a.authorName = post.DisplayName(*msg.From)
-		a.authorID = msg.From.ID
-	}
-	return a
 }
 
 // source — данные поста из подписи альбома.

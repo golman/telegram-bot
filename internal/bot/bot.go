@@ -136,30 +136,25 @@ func (b *Bot) publishAlbum(id string, a *album) {
 	b.sendMediaGroup(a)
 }
 
-// admit проверяет подписку автора и фильтры. Если сообщение не принято,
+// admit проверяет подписку автора. Если сообщение не принято,
 // автор получает объяснение и возвращается false.
-func (b *Bot) admit(update telego.Update) bool {
-	chatID := update.Message.Chat.ID
-	subscribed, err := b.authByChannel(update)
+func (b *Bot) admit(msg *telego.Message) bool {
+	subscribed, err := b.authByChannel(msg)
 	if err != nil {
 		// Сырой текст ошибки API пользователю не показывается.
-		slog.Warn("не удалось проверить подписку", "user_id", update.Message.From.ID, "err", err)
-		b.sendTextMessage(authCheckFailedMessage, chatID)
+		slog.Warn("не удалось проверить подписку", "user_id", msg.From.ID, "err", err)
+		b.sendTextMessage(authCheckFailedMessage, msg.Chat.ID)
 		return false
 	}
 	if !subscribed {
-		b.sendTextMessage(notSubscribedMessage, chatID)
-		return false
-	}
-	if b.runFilter(update) {
-		b.sendTextMessage(filtersFailedMessage, chatID)
+		b.sendTextMessage(notSubscribedMessage, msg.Chat.ID)
 		return false
 	}
 	return true
 }
 
-// addAlbumItem добавляет элемент альбома в накопитель. Подписка и фильтры
-// проверяются один раз, на первом пришедшем элементе: при отказе автор
+// addAlbumItem добавляет элемент альбома в накопитель. Подписка
+// проверяется один раз, на первом пришедшем элементе: при отказе автор
 // получает одно сообщение, а накопитель помечается отклонённым и молча
 // отбрасывает остальные элементы, пока не истечёт albumLateWindow.
 // Видео и файлы собираются вместе с фото, чтобы не потерять подпись,
@@ -167,13 +162,12 @@ func (b *Bot) admit(update telego.Update) bool {
 // длина подписи: слишком длинный альбом сразу отклоняется, иначе автору
 // обещается публикация. При отправке длина проверяется ещё раз: подпись
 // может смениться подписью более позднего элемента.
-func (b *Bot) addAlbumItem(update telego.Update) {
-	msg := update.Message
+func (b *Bot) addAlbumItem(msg *telego.Message) {
 	a, ok := b.albums[msg.MediaGroupID]
 	if !ok {
 		a = newAlbum(msg)
 		b.albums[msg.MediaGroupID] = a
-		if !b.admit(update) {
+		if !b.admit(msg) {
 			b.rejectAlbum(a)
 			return
 		}
@@ -211,11 +205,11 @@ func (b *Bot) rejectAlbum(a *album) {
 func (b *Bot) rejectLateAlbumItem(a *album, msg *telego.Message) {
 	if !a.published {
 		slog.Info("фото пришло после отказа в публикации альбома, пропущено",
-			"user_id", msg.Chat.ID, "message_id", msg.MessageID, "media_group_id", msg.MediaGroupID)
+			"user_id", msg.From.ID, "message_id", msg.MessageID, "media_group_id", msg.MediaGroupID)
 		return
 	}
 	slog.Info("фото пришло после отправки альбома, не опубликовано",
-		"user_id", msg.Chat.ID, "message_id", msg.MessageID, "media_group_id", msg.MediaGroupID)
+		"user_id", msg.From.ID, "message_id", msg.MessageID, "media_group_id", msg.MediaGroupID)
 	if a.lateNotified {
 		return
 	}
@@ -311,33 +305,34 @@ func (b *Bot) confirmNewAd(chatID int64, replyToID int, sentMsg telego.Message) 
 }
 
 // handleUpdate обрабатывает сообщение автора. Это единственный вход для
-// сообщений, поэтому дальше (authByChannel, send.go) From уже не nil.
+// сообщений, поэтому дальше (authByChannel, send.go, newAlbum,
+// rejectLateAlbumItem) From уже не nil.
 func (b *Bot) handleUpdate(update telego.Update) {
-	if update.Message.Chat.Type != telego.ChatTypePrivate {
-		return
-	}
-	if update.Message.From == nil {
-		slog.Info("сообщение без автора, пропущено", "chat_id", update.Message.Chat.ID, "message_id", update.Message.MessageID)
-		return
-	}
 	msg := update.Message
+	if msg.Chat.Type != telego.ChatTypePrivate {
+		return
+	}
+	if msg.From == nil {
+		slog.Info("сообщение без автора, пропущено", "chat_id", msg.Chat.ID, "message_id", msg.MessageID)
+		return
+	}
 	// Элементы альбома проверяются один раз на весь альбом, в addAlbumItem.
 	if msg.MediaGroupID != "" {
-		b.addAlbumItem(update)
+		b.addAlbumItem(msg)
 		return
 	}
-	if !b.admit(update) {
+	if !b.admit(msg) {
 		return
 	}
 	// Принимаются только текст и фото.
 	if msg.Photo == nil && msg.Text == "" {
-		slog.Info("сообщение не текст и не фото, отклонено", "user_id", msg.Chat.ID, "message_id", msg.MessageID)
+		slog.Info("сообщение не текст и не фото, отклонено", "user_id", msg.From.ID, "message_id", msg.MessageID)
 		b.sendTextMessage(unsupportedMessage, msg.Chat.ID)
 		return
 	}
 	if msg.Photo != nil {
-		b.sendPhotoMessage(update)
+		b.sendPhotoMessage(msg)
 	} else {
-		b.sendPlainMessage(update)
+		b.sendPlainMessage(msg)
 	}
 }
