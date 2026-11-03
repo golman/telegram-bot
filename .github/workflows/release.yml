@@ -1,0 +1,44 @@
+name: Релиз
+
+# Релиз на GitHub создаётся на каждый запушенный тег vX.Y.Z. Текст релиза —
+# раздел CHANGELOG.md с заголовком «## <тег> — дата», без самого заголовка.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Релиз ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Раздел ищется сравнением строк, а не регуляркой: точки в теге не должны
+      # совпадать с любым символом. Нет раздела — релиз не создаётся.
+      - name: Текст релиза из CHANGELOG.md
+        run: |
+          awk -v head="## $GITHUB_REF_NAME" '
+            f && /^## / { exit }
+            f { print }
+            $0 == head || index($0, head " ") == 1 { f = 1 }
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "::error::В CHANGELOG.md нет раздела «## $GITHUB_REF_NAME — дата»"
+            exit 1
+          fi
+
+      - name: Создать релиз
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME"
+          --repo "$GITHUB_REPOSITORY"
+          --title "$GITHUB_REF_NAME"
+          --notes-file notes.md
+          --verify-tag
